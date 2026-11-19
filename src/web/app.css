@@ -1,0 +1,65 @@
+/* High contrast on black: every text colour is bright enough to read. */
+:root {
+  --bg: #000;
+  --panel: #121214;
+  --panel-2: #1c1c20;
+  --line: #34343a;
+  --text: #fff;
+  --text-2: #e4e4e8;
+  --text-3: #c4c4cc;
+  --accent: #00a4dc;
+  --accent-2: #aa5cc3;
+  --hi: #ffd84d;
+  --cursor: #0a3a52;
+  --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 var(--font);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+kbd {
+  font: 12px var(--mono);
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}

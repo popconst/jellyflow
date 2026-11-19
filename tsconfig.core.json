@@ -1,0 +1,10 @@
+{
+  // The core again, without the DOM: shared by the web app and the terminal
+  // app, so it may only use what Node has too (fetch, WebSocket, URL).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  "include": ["src/core"]
+}
