@@ -94,7 +94,7 @@ A rebuild is a redeploy: the server always serves what's in `dist/`.
 | `g` `G` | first / last |
 | `/` | filter by artist, album, year or track title (words in any order). `Enter` browses the matches, `Esc` cancels, `Ctrl-U` clears |
 | `Esc` | the whole library again, at the same album |
-| `Enter` | open the album: a page with its tracks swings out beside the cover, with the spectrum of what's playing under them. On it, `j` / `k` move, `Enter` plays from there (so `Enter` `Enter` plays the album), and `k` on the first track or `Esc` folds it shut |
+| `Enter` `j` | open the album: a page with its tracks swings out beside the cover, with the spectrum of what's playing under them. On it, `j` / `k` move, `Enter` plays from there (so `Enter` `Enter` plays the album), and `k` on the first track or `Esc` folds it shut |
 
 **Folders** (like ranger or yazi: the folder above, this folder, and a preview):
 

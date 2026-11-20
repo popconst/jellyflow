@@ -443,7 +443,9 @@
       case 'o':
         jumpBack()
         break
+      // j opens it too: down into the tracks, and k on the first one folds it shut
       case '<Enter>':
+      case 'j':
         if (!repeat) void openTracks()
         break
       case 'a':
@@ -536,6 +538,7 @@
         press(1, repeat)
         break
       case '<Enter>':
+      case 'j':
         if (!repeat) void openTracks()
         break
       case 'a':

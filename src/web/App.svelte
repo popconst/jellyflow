@@ -69,7 +69,7 @@
         ['g G', 'first / last'],
         ['/', 'filter by artist, album, year or track; Enter browses, Esc cancels'],
         ['Esc', 'whole library again, same album'],
-        ['Enter', 'open the album: its tracks swing out beside it, the spectrum under them; j k, Enter plays from there, Esc closes'],
+        ['Enter j', 'open the album: its tracks swing out beside it, the spectrum under them; j k, Enter plays from there, Esc or k on the first track closes'],
       ],
     ],
     [
