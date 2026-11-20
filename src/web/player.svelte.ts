@@ -30,13 +30,15 @@ class Player {
   current = $derived<Track | undefined>(this.queue[this.index])
   /** The sound as a Web Audio node, for the visualiser to tap; there once something's played */
   source = $state.raw<AudioNode | undefined>()
+  /** After a reload: it was playing, and plays on at the first key press or click (the browser wouldn't start it) */
+  waiting = $state(false)
 
   private audio = new Audio()
   /** Where to seek to once the track's loaded: the second it was at before a reload */
   private resumeAt = 0
   private savedAt = 0
   /** Playing on after a reload, held back until the first key press or click */
-  private held: ((e: Event) => void) | undefined
+  private held: (() => void) | undefined
 
   constructor() {
     // Jellyfin allows it (CORS), and without it Web Audio would only hear silence
@@ -88,34 +90,45 @@ class Player {
   /**
    * After a reload: plays on if the browser lets it start sound by itself.
    * The sound goes through Web Audio, so that has to be running too, or the
-   * track would run on in silence; if either is refused, it waits for the
-   * first key press or click.
+   * track would run on in silence. Browsers only allow it where the site may
+   * autoplay (Brave: site settings → Autoplay → Allow); otherwise it waits
+   * for the first key press or click. Held from the start, so it's
+   * remembered as playing meanwhile (another reload plays on too).
    */
   private async playOn(): Promise<void> {
+    this.hold()
     this.wire()
     const context = this.source?.context as AudioContext | undefined
     if (context && context.state !== 'running') {
       // a refused resume() never settles: give it a moment, then look
       await Promise.race([context.resume(), new Promise((r) => setTimeout(r, 300))])
     }
-    if (context && context.state !== 'running') return this.hold()
+    if (!this.held || (context && context.state !== 'running')) return
     try {
       await this.audio.play()
+      this.release()
     } catch {
-      this.hold()
+      // still held
     }
   }
 
-  /** Plays on at the first key press or click (Space plays by itself: it's play / pause) */
+  /**
+   * Plays on at the first key press or click, once that's done what it does:
+   * Space, the play button or Enter on this track play on by themselves (and
+   * would pause it again or start it over if this went first)
+   */
   private hold(): void {
     if (this.held) return
-    const go = (e: Event) => {
-      if (e instanceof KeyboardEvent && e.key === ' ') return
-      this.release()
-      this.wire()
-      void this.audio.play().catch(() => undefined)
+    const go = () => {
+      setTimeout(() => {
+        if (this.held !== go) return
+        this.release()
+        this.wire()
+        void this.audio.play().catch(() => undefined)
+      })
     }
     this.held = go
+    this.waiting = true
     addEventListener('keydown', go, true)
     addEventListener('pointerdown', go, true)
   }
@@ -125,6 +138,7 @@ class Player {
     removeEventListener('keydown', this.held, true)
     removeEventListener('pointerdown', this.held, true)
     this.held = undefined
+    this.waiting = false
   }
 
   private save(): void {
@@ -134,10 +148,13 @@ class Player {
     store(SAVED, { queue: this.queue, index: this.index, time: this.resumeAt || time, playing } satisfies Saved)
   }
 
-  /** Replaces the queue and plays from `from` */
+  /** Replaces the queue and plays from `from`; the track waiting to play on after a reload plays on where it was */
   play(tracks: Track[], from = 0): void {
+    const resume = this.held && tracks[from]?.id === this.current?.id
     this.queue = tracks
-    this.start(from)
+    if (!resume) return this.start(from)
+    this.index = from
+    this.toggle()
   }
 
   /** Adds to the end of the queue; plays nothing new */

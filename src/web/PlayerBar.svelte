@@ -74,6 +74,9 @@
       <div class="knob" style:left="{done}%"></div>
     </div>
     <div class="time">{duration(player.duration)}</div>
+    {#if player.waiting}
+      <div class="chip waiting" title="The browser only lets sound start from a key press or click">any key plays on</div>
+    {/if}
     {#if t.quality}
       <div class="chip" class:hires={t.hiRes} title="Streamed as the file is, not transcoded">{t.quality}</div>
     {/if}
@@ -226,6 +229,21 @@
   }
   .queue {
     color: var(--text-2);
+  }
+  /* after a reload, until a key press lets the sound start */
+  .waiting {
+    color: var(--text);
+    background: var(--glass);
+    box-shadow: var(--glass-edge);
+    animation: breathe 1.6s ease-in-out infinite alternate;
+  }
+  @keyframes breathe {
+    from {
+      opacity: 0.6;
+    }
+    to {
+      opacity: 1;
+    }
   }
   .idle {
     color: var(--text-2);

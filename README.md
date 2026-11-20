@@ -133,8 +133,9 @@ A rebuild is a redeploy: the server always serves what's in `dist/`.
   second it was at), where Cover Flow was (album and filter), and the open
   folder with its cursor. If something was playing, it plays on and Cover
   Flow opens its album. The browser has to allow the site to start sound by
-  itself (in Brave: site settings → Autoplay → Allow); if it doesn't, it
-  plays on at the first key press or click.
+  itself (in Brave: site settings → Autoplay → Allow; Chrome has no such
+  setting); if it doesn't, the player bar says so and it plays on at the
+  first key press or click, from the same second.
 
 ## Privacy
 
