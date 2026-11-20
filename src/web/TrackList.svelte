@@ -3,6 +3,7 @@
   import { duration } from '../core/details.ts'
   import type { Track } from '../core/library.ts'
   import { player } from './player.svelte.ts'
+  import Playing from './Playing.svelte'
 
   interface Props {
     tracks: Track[]
@@ -34,7 +35,7 @@
   {#each tracks as track, i (track.id)}
     <li class:cursor={i === cursor} class:playing={player.current?.id === track.id}>
       <button onclick={() => onplay(i)}>
-        <span class="n">{player.current?.id === track.id ? (player.paused ? '❚❚' : '▶') : number(track)}</span>
+        <span class="n">{#if player.current?.id === track.id}<Playing />{:else}{number(track)}{/if}</span>
         <span class="t">{track.title}</span>
         <span class="d">{duration(track.seconds)}</span>
       </button>
@@ -63,16 +64,15 @@
     color: var(--text-2);
   }
   button:hover {
-    background: var(--panel-2);
+    background: var(--hover);
   }
   .cursor button {
-    background: var(--cursor);
+    background: var(--glass);
+    box-shadow: var(--glass-edge);
     color: var(--text);
-    outline: 1px solid var(--accent);
   }
-  .playing .t,
-  .playing .n {
-    color: var(--accent);
+  .playing .t {
+    color: var(--text);
     font-weight: 600;
   }
   .n,

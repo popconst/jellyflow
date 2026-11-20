@@ -10,7 +10,11 @@
   --accent: #00a4dc;
   --accent-2: #aa5cc3;
   --hi: #ffd84d;
-  --cursor: #0a3a52;
+  /* the cursor: a pane of glass over what's behind it, lit from above like the
+     covers on the floor; a lighter wash on hover */
+  --glass: linear-gradient(to bottom, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0.08) 55%, rgb(255 255 255 / 0.11));
+  --glass-edge: inset 0 1px 0 rgb(255 255 255 / 0.32), inset 0 0 0 1px rgb(255 255 255 / 0.07), 0 8px 22px -10px rgb(0 0 0 / 0.8);
+  --hover: rgb(255 255 255 / 0.06);
   --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, monospace;
   color-scheme: dark;

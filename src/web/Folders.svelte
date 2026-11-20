@@ -13,6 +13,7 @@
   import Cover from './Cover.svelte'
   import Details from './Details.svelte'
   import { player } from './player.svelte.ts'
+  import Playing from './Playing.svelte'
   import { app, store, stored, typing } from './state.svelte.ts'
   import TrackList from './TrackList.svelte'
 
@@ -412,7 +413,7 @@
 
 {#snippet thumb(item: Item, size: number)}
   {#if item.Type === 'Audio'}
-    <span class="num">{item.IndexNumber ?? '·'}</span>
+    <span class="num">{#if player.current?.id === item.Id}<Playing />{:else}{item.IndexNumber ?? '·'}{/if}</span>
   {:else if item.ImageTags?.['Primary'] || item.Type === 'MusicAlbum'}
     <Cover id={item.Id} tag={item.ImageTags?.['Primary']} {size} title={label(item)} />
   {:else}
@@ -595,14 +596,14 @@
     text-align: left;
   }
   li button:hover {
-    background: var(--panel-2);
+    background: var(--hover);
   }
   li.cursor button {
-    background: var(--cursor);
-    outline: 1px solid var(--accent);
+    background: var(--glass);
+    box-shadow: var(--glass-edge);
   }
   li.playing .name {
-    color: var(--accent);
+    color: var(--text);
     font-weight: 600;
   }
   .thumb {
