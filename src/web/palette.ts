@@ -1,14 +1,11 @@
 // An album's colours, sampled from its cover: its strongest hues, kept close
 // to how they look on the cover but bright enough to glow on black; greys for
-// a black-and-white cover. For the visualiser's gradient.
+// a black-and-white cover. For the visualiser's gradient and the seek bar.
 
-/**
- * The cover is read at this size, one nothing else asks Jellyfin for. That
- * matters: Jellyfin only sends the CORS header to requests that ask for it,
- * and caches images for a year, so a size already shown on screen comes back
- * from the browser's cache without the header, and can't be read.
- */
-export const PALETTE_PX = 48
+import { app } from './state.svelte.ts'
+
+/** The size the cover is read at: small, the colours are all that's wanted */
+const PALETTE_PX = 48
 
 const cache = new Map<string, Promise<string[]>>()
 
@@ -33,10 +30,21 @@ const css = ([h, s, l]: Hsl) => `hsl(${h.toFixed(0)} ${(s * 100).toFixed(0)}% ${
 
 /** Up to three colours, strongest first; greys for a cover without colour */
 async function read(url: string): Promise<string[]> {
+  // Fetched afresh, never from the browser's cache: Jellyfin only sends the
+  // CORS header to requests that ask for it, and has images cached for a
+  // year, so a cover the page has already shown (any <img> of that size, the
+  // folder mosaics say) would come back without it, and couldn't be read
+  const response = await fetch(url, { cache: 'no-store' })
+  if (!response.ok) throw new Error(`Jellyfin said ${response.status} for a cover`)
+  // decoded from a local copy: any format the browser shows, and readable
+  const local = URL.createObjectURL(await response.blob())
   const img = new Image()
-  img.crossOrigin = 'anonymous'
-  img.src = url
-  await img.decode()
+  img.src = local
+  try {
+    await img.decode()
+  } finally {
+    URL.revokeObjectURL(local)
+  }
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = PALETTE_PX
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
@@ -76,10 +84,17 @@ async function read(url: string): Promise<string[]> {
   return [css([0, 0, Math.min(0.95, l + 0.12)]), css([0, 0, l]), css([0, 0, l - 0.25])]
 }
 
-export function palette(url: string): Promise<string[]> {
+/** An album's colours, read once; none when it has no cover or the cover can't be read */
+export function coverColours(albumId: string, tag: string | undefined): Promise<string[]> {
+  const client = app.client
+  if (!tag || !client) return Promise.resolve([])
+  const url = client.imageUrl(albumId, tag, PALETTE_PX)
   let colours = cache.get(url)
   if (!colours) {
-    colours = read(url).catch(() => [])
+    colours = read(url).catch((e: unknown) => {
+      console.warn('jellyflow: could not read the colours of', url, e)
+      return []
+    })
     cache.set(url, colours)
   }
   return colours

@@ -34,6 +34,7 @@
   /** The last search, for n / N */
   let pattern = $state('')
   let list = $state<HTMLOListElement>()
+  let searchInput = $state<HTMLInputElement>()
   const keys = new Keys()
   /** A count or g typed so far */
   let pending = $state('')
@@ -152,6 +153,12 @@
     cursor = cursors.get(item.Id) ?? 0
     info = false
     await load(item.Id)
+  }
+
+  /** A tile in the preview: into the folder under the cursor, onto that item */
+  async function openAt(item: Item): Promise<void> {
+    await enter()
+    move(items.findIndex((i) => i.Id === item.Id))
   }
 
   /** Back to the folder above, the cursor on the one just left */
@@ -397,7 +404,7 @@
   }
 
   $effect(() => {
-    if (searching) document.getElementById('folder-search')?.focus()
+    if (searching) searchInput?.focus()
   })
 </script>
 
@@ -479,13 +486,7 @@
         {#if preview}
           <div class="grid">
             {#each preview as item (item.Id)}
-              <button
-                class="tile"
-                onclick={async () => {
-                  await enter()
-                  move(preview.indexOf(item))
-                }}
-              >
+              <button class="tile" onclick={() => void openAt(item)}>
                 <span class="tile-art">{@render thumb(item, 300)}</span>
                 <span class="tile-name">{label(item)}</span>
               </button>
@@ -509,7 +510,7 @@
     {#if searching}
       <span class="slash">/</span>
       <input
-        id="folder-search"
+        bind:this={searchInput}
         bind:value={searchQuery}
         oninput={onSearchInput}
         onkeydown={onSearchKey}

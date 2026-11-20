@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { details, duration, khz, links, quality } from './details.ts'
 import type { Item } from './jellyfin.ts'
-import { compareNames, folderName } from './jellyfin.ts'
+import { compareNames, folderName, VERSION } from './jellyfin.ts'
 import { Keys } from './keys.ts'
 import { albumsFrom, filter, TrackTitles } from './library.ts'
 import { Motion } from './motion.ts'
@@ -140,4 +141,9 @@ test('motion: a tap glides one album; a hold runs ever faster and slows onto an 
 test('folders: names from the path, natural order', () => {
   assert.equal(folderName({ Id: 'x', Name: 'Kill', Type: 'MusicAlbum', Path: '/m/Metallica/1983 - Kill/' }), '1983 - Kill')
   assert.ok(compareNames('Disc 2', 'Disc 10') < 0)
+})
+
+test('the version Jellyfin is told is the package version', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }
+  assert.equal(VERSION, pkg.version)
 })

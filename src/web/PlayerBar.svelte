@@ -5,21 +5,20 @@
 <script lang="ts">
   import { duration } from '../core/details.ts'
   import Cover from './Cover.svelte'
-  import { palette, PALETTE_PX, stops } from './palette.ts'
+  import { coverColours, stops } from './palette.ts'
   import { player } from './player.svelte.ts'
   import { app } from './state.svelte.ts'
 
-  /** The playing album's colours, for the seek bar */
+  /** The playing album's colours, for the seek bar; the app's own without a cover */
   let colours = $state<string[]>([])
   $effect(() => {
     const t = player.current
-    const client = app.client
-    if (!t?.imageTag || !client) {
+    if (!t?.imageTag || !app.client) {
       colours = []
       return
     }
     let live = true
-    void palette(client.imageUrl(t.albumId, t.imageTag, PALETTE_PX)).then((c) => {
+    void coverColours(t.albumId, t.imageTag).then((c) => {
       if (live) colours = stops(c)
     })
     return () => {

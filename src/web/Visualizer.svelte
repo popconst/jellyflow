@@ -7,18 +7,19 @@
 <script lang="ts">
   import AudioMotionAnalyzer from 'audiomotion-analyzer'
   import { untrack } from 'svelte'
-  import { palette, stops } from './palette.ts'
+  import { coverColours, stops } from './palette.ts'
   import { player } from './player.svelte.ts'
 
   interface Props {
-    /** The cover to sample the colours from, at palette.ts's PALETTE_PX */
-    art: string | undefined
+    /** The album whose cover the colours come from, and that cover's tag */
+    albumId: string
+    tag: string | undefined
     /** The share of the height below the bars, for their reflection */
     reflex?: number
     /** Off while the album in focus isn't the one playing: it rests (the parent fades it out) */
     active?: boolean
   }
-  let { art, reflex = 0.25, active = true }: Props = $props()
+  let { albumId, tag, reflex = 0.25, active = true }: Props = $props()
 
   let box = $state<HTMLDivElement>()
   let analyzer = $state.raw<AudioMotionAnalyzer>()
@@ -69,7 +70,7 @@
     const a = analyzer
     if (!a) return
     let current = true
-    void (art ? palette(art) : Promise.resolve([])).then((colours) => {
+    void coverColours(albumId, tag).then((colours) => {
       if (!current) return
       a.registerGradient('album', { bgColor: 'transparent', colorStops: stops(colours) })
       a.gradient = 'album'

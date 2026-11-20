@@ -21,7 +21,6 @@
   import { app, store, stored, typing } from './state.svelte.ts'
   import TrackList from './TrackList.svelte'
   import Visualizer from './Visualizer.svelte'
-  import { PALETTE_PX } from './palette.ts'
 
   /** The row's geometry, in units of `size`: the first side cover's place, then each next one's */
   const GAP = 0.8
@@ -77,7 +76,7 @@
   let frame = 0
   let lastFrame = 0
   let wheelTimer: ReturnType<typeof setTimeout> | undefined
-  /** The album opened with j, kept while its page folds shut again */
+  /** The album opened with Enter, kept while its page folds shut again */
   let opened = $state.raw<{ album: Album; tracks: Track[] } | undefined>()
   /** Where c came from, for o to go back to (and o again to return) */
   let back: { id: string; filter: string } | undefined
@@ -619,13 +618,9 @@
     <!-- the floor glows with what's playing, in its album's colours, under the covers'
          reflections, whichever album is in the middle (an open album has its own
          spectrum, on its page, only when it's the one playing) -->
-    {#if mode.kind !== 'tracks' && player.current && app.client}
-      {@const playing = player.current}
+    {#if mode.kind !== 'tracks' && player.current}
       <div class="glow" style:height="{Math.max(40, (box.h - floor) * 0.8)}px">
-        <Visualizer
-          art={playing.imageTag ? app.client.imageUrl(playing.albumId, playing.imageTag, PALETTE_PX) : undefined}
-          reflex={0}
-        />
+        <Visualizer albumId={player.current.albumId} tag={player.current.imageTag} reflex={0} />
       </div>
     {/if}
     <div
@@ -700,9 +695,8 @@
             style:height="{barsH + mirrorH}px"
           >
             <Visualizer
-              art={o.album.imageTag && app.client
-                ? app.client.imageUrl(o.album.id, o.album.imageTag, PALETTE_PX)
-                : undefined}
+              albumId={o.album.id}
+              tag={o.album.imageTag}
               reflex={mirrorH / (barsH + mirrorH)}
               active={live}
             />
@@ -978,10 +972,6 @@
     bottom: 0;
     opacity: 0.6;
     pointer-events: none;
-    transition: opacity 500ms;
-  }
-  .flow.open .glow {
-    opacity: 0;
   }
   .slash,
   .filter {

@@ -10,6 +10,9 @@
   /** What Jellyfin itself knows: the overview and its links (fine without, if it can't say) */
   const extra = $derived(app.albumItem(album.id).catch(() => undefined))
   const ours = $derived(links(album))
+  /** Jellyfin's links to the album elsewhere, but for the ones above; web pages only (they come from tags) */
+  const theirs = (urls: { Name: string; Url: string }[] = []) =>
+    urls.filter((u) => /^https?:\/\//i.test(u.Url) && !ours.some((l) => l.url === u.Url))
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 </script>
 
@@ -55,7 +58,7 @@
           <a href={link.url} target="_blank" rel="noreferrer"><kbd>{link.key}</kbd> {link.name}</a>
         {/each}
         {#await extra then item}
-          {#each (item?.ExternalUrls ?? []).filter((u) => !ours.some((l) => l.url === u.Url)) as url (url.Url)}
+          {#each theirs(item?.ExternalUrls) as url (url.Url)}
             <a href={url.Url} target="_blank" rel="noreferrer">{url.Name}</a>
           {/each}
         {/await}

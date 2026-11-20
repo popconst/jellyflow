@@ -5,10 +5,11 @@
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { createServer } from 'node:http'
-import { extname, join, normalize, sep } from 'node:path'
+import { extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('./dist/', import.meta.url))
+const assets = join(root, 'assets')
 const host = process.env['HOST'] ?? '127.0.0.1'
 const port = Number(process.env['PORT'] ?? 4173)
 
@@ -21,6 +22,7 @@ const types: Record<string, string> = {
   '.json': 'application/json',
 }
 
+/** `path` if it's a file */
 async function file(path: string): Promise<string | undefined> {
   try {
     return (await stat(path)).isFile() ? path : undefined
@@ -29,18 +31,40 @@ async function file(path: string): Promise<string | undefined> {
   }
 }
 
+/** The file asked for if it's in dist/, else the app's page; throws on a malformed %-escape */
+async function resolve(url: string): Promise<string | undefined> {
+  const wanted = normalize(join(root, decodeURIComponent(new URL(url, 'http://localhost').pathname)))
+  return (wanted.startsWith(root) ? await file(wanted) : undefined) ?? (await file(join(root, 'index.html')))
+}
+
 createServer(async (req, res) => {
-  const { pathname } = new URL(req.url ?? '/', 'http://localhost')
-  const wanted = normalize(join(root, decodeURIComponent(pathname)))
-  // anything that isn't a file is the app's page
-  const path = (wanted.startsWith(root) || wanted + sep === root ? await file(wanted) : undefined) ?? join(root, 'index.html')
-  if (!(await file(path))) {
-    res.writeHead(500).end('Build the app first: npm run build')
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { Allow: 'GET, HEAD' }).end()
+    return
+  }
+  let path: string | undefined
+  try {
+    path = await resolve(req.url ?? '/')
+  } catch {
+    res.writeHead(400).end()
+    return
+  }
+  if (!path) {
+    res.writeHead(503, { 'Content-Type': 'text/plain' }).end('Build the app first: npm run build\n')
     return
   }
   res.writeHead(200, {
     'Content-Type': types[extname(path)] ?? 'application/octet-stream',
-    'Cache-Control': path.includes(`${sep}assets${sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache',
+    // the bundles' names change with their content; the page itself is always asked for afresh
+    'Cache-Control': path.startsWith(assets) ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'X-Content-Type-Options': 'nosniff',
   })
-  createReadStream(path).pipe(res)
+  if (req.method === 'HEAD') {
+    res.end()
+    return
+  }
+  // a rebuild can take the file away mid-read
+  createReadStream(path)
+    .on('error', () => res.destroy())
+    .pipe(res)
 }).listen(port, host, () => console.log(`jellyflow on http://${host}:${port}`))

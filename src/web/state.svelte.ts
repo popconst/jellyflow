@@ -70,6 +70,7 @@ class App {
     await this.load()
   }
 
+  /** Forgets the login and everything read with it (another user may log in next) */
   logout(): void {
     this.client?.logout().catch(() => undefined)
     store('jellyflow.session', undefined)
@@ -77,7 +78,10 @@ class App {
     this.socket?.close()
     this.library = undefined
     this.albums = []
+    this.titles = new TrackTitles()
+    this.titlesVersion++
     this.tracks.clear()
+    this.items.clear()
   }
 
   /** The albums first (the row can show), then every track title, a page at a time (for searching by track) */
@@ -161,7 +165,12 @@ class App {
     let settle: ReturnType<typeof setTimeout> | undefined
     let keepAlive: ReturnType<typeof setInterval> | undefined
     socket.onmessage = (event) => {
-      const message = JSON.parse(String(event.data)) as { MessageType: string; Data?: unknown }
+      let message: { MessageType?: string; Data?: unknown }
+      try {
+        message = JSON.parse(String(event.data)) as typeof message
+      } catch {
+        return
+      }
       if (message.MessageType === 'LibraryChanged') {
         clearTimeout(settle)
         settle = setTimeout(() => void this.reload(), SETTLE_MS)

@@ -2,6 +2,7 @@
 // needs. Plain fetch and URLs, so it runs in the browser and in Node alike.
 
 export const CLIENT = 'jellyflow'
+/** The app's version, as Jellyfin lists it under Devices: package.json's (a test keeps them in step) */
 export const VERSION = '0.1.0'
 
 /** Who's logged in where; saved by the app between runs */
@@ -220,7 +221,7 @@ export class Jellyfin {
     return this.url(`/Audio/${trackId}/stream`, { static: true, deviceId: this.device.id })
   }
 
-  /** Jellyfin's live events: LibraryChanged and the like */
+  /** Jellyfin's live events: LibraryChanged and the like. The token both ways: newer servers read ApiKey, older api_key */
   socketUrl(): string {
     const url = new URL(this.url('/socket', { ApiKey: this.session.token, api_key: this.session.token, deviceId: this.device.id }))
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
