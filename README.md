@@ -6,15 +6,18 @@ keyboard with vim keys. It's the web sibling of
 [coverflow](https://github.com/popconst/coverflow), the MPD terminal app,
 with the same keys. A terminal version comes next and shares the same core.
 
-```
-   ┌──┐ ┌────┐ ┌──────────┐ ┌────┐ ┌──┐
-   │  │ │    │ │          │ │    │ │  │
-   └──┘ │    │ │  cover   │ │    │ └──┘
-        └────┘ │          │ └────┘
-               └──────────┘
-               Discovery
-           Daft Punk · 2001
-```
+![Cover Flow: the albums in a row, the spectrum of what's playing on the floor in the cover's colours](docs/coverflow.webp)
+
+<table>
+  <tr>
+    <td><img src="docs/album.webp" alt="An album opened like a gatefold sleeve: its tracks beside the cover, the spectrum under them"></td>
+    <td><img src="docs/folders.webp" alt="Folders: the artist, its albums and a preview of the one under the cursor, all with their art"></td>
+  </tr>
+  <tr>
+    <td align="center"><code>Enter</code> opens an album like a gatefold sleeve</td>
+    <td align="center">Folders, with vim motions</td>
+  </tr>
+</table>
 
 - **Cover Flow:** a 3D row of covers that glides on a tap and runs ever
   faster while a key is held. `Enter` opens an album like a gatefold sleeve,
