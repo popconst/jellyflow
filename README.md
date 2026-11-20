@@ -10,8 +10,8 @@ with the same keys. A terminal version comes next and shares the same core.
 
 <table>
   <tr>
-    <td><img src="docs/album.webp" alt="An album opened like a gatefold sleeve: its tracks beside the cover, the spectrum under them"></td>
-    <td><img src="docs/folders.webp" alt="Folders: the artist, its albums and a preview of the one under the cursor, all with their art"></td>
+    <td width="50%"><img src="docs/album.webp" width="100%" alt="An album opened like a gatefold sleeve: its tracks beside the cover, the spectrum under them"></td>
+    <td width="50%"><img src="docs/folders.webp" width="100%" alt="Folders: the artist, its albums and a preview of the one under the cursor, all with their art"></td>
   </tr>
   <tr>
     <td align="center"><code>Enter</code> opens an album like a gatefold sleeve</td>
