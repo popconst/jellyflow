@@ -94,7 +94,7 @@
         ['Shift-Tab', 'Cover Flow ⇄ Folders'],
         ['Space', 'play / pause'],
         ['< >', 'previous / next track'],
-        ['c', 'go to what’s playing'],
+        ['c', 'go to what’s playing: its album glides in and opens at the track'],
         ['o', 'back to where you were before c (again: back to what’s playing)'],
         ['a', 'add to the queue'],
         ['i', 'album details: Jellyfin’s overview, tags, quality, links'],

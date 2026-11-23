@@ -5,6 +5,7 @@
   floor under it) and the details (i).
 -->
 <script lang="ts">
+  import { tick } from 'svelte'
   import { duration, links } from '../core/details.ts'
   import { keyName } from '../core/keys.ts'
   import { filter as find, toTrack, type Album, type Found, type Track } from '../core/library.ts'
@@ -185,24 +186,28 @@
     app.say('Added to the queue')
   }
 
-  /** To album `id` with `filter` on: a glide if the filter's the same, else the new row at it */
-  function goTo(id: string, filter: string): void {
+  /** To album `id` with `filter` on: gliding there as a click does if the filter's the same, else the new row at it; `then` once there */
+  function goTo(id: string, filter: string, then?: () => void): void {
     if (filter !== applied) {
       query = filter
       applyFilter(id)
+      if (then) void tick().then(then)
       return
     }
     const at = albums.findIndex((a) => a.id === id)
-    if (at >= 0) row?.select(at)
+    if (at >= 0) row?.select(at, true, then)
   }
 
-  /** c: the album playing; the filter goes if it isn't among its matches. o comes back here */
+  /**
+   * c: the album playing, opened at its track, as a click on its cover
+   * would (the filter goes if it isn't among its matches); o comes back here
+   */
   function jumpToPlaying(): void {
     const id = player.current?.albumId
     if (!id || !app.albums.some((a) => a.id === id)) return
     const here = chosen()?.album.id
     if (here && here !== id) back = { id: here, filter: applied }
-    goTo(id, found.some((f) => app.albums[f.index]?.id === id) ? applied : '')
+    goTo(id, found.some((f) => app.albums[f.index]?.id === id) ? applied : '', () => void openTracks())
   }
 
   /** o: back to where c came from; o again goes back there */
@@ -293,6 +298,20 @@
         break
       case '<Enter>':
         if (!repeat) playFrom(m.cursor)
+        break
+      // the album playing: here, its track; another, the page shuts and that one opens
+      case 'c': {
+        const at = m.tracks.findIndex((t) => t.id === player.current?.id)
+        if (at >= 0) m.cursor = at
+        else if (!repeat) {
+          mode = BROWSE
+          jumpToPlaying()
+        }
+        break
+      }
+      case 'o':
+        mode = BROWSE
+        jumpBack()
         break
       case 'a':
         if (!repeat) void add()

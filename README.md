@@ -110,7 +110,7 @@ A rebuild is a redeploy: the server always serves what's in `dist/`.
 **Everywhere:**
 - `Space`: play / pause.
 - `<` `>`: previous / next track.
-- `c`: go to what's playing. `o` goes back to where you were before (`o` again: back to what's playing).
+- `c`: go to what's playing: its album glides into the middle and opens at the track, as a click on its cover would. `o` goes back to where you were before (`o` again: back to what's playing).
 - `a`: add to the queue.
 - `i`: the album's details. `d`, `w` and `m` open the album on Discogs, Wikipedia and MusicBrainz.
 
