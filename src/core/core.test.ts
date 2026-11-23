@@ -136,6 +136,17 @@ test('motion: a tap glides one album; a hold runs ever faster and slows onto an 
   assert.equal(m.pos, 488, 'a far jump starts close by')
   run(m, 2)
   assert.equal(m.pos, 500)
+
+  // a click glides there, more gently than a jump
+  const j = new Motion()
+  j.jump(4)
+  m.snap(0)
+  m.glide(4)
+  run(j, 0.15)
+  run(m, 0.15)
+  assert.ok(m.pos < j.pos - 0.5, 'a glide is gentler')
+  run(m, 2)
+  assert.equal(m.pos, 4)
 })
 
 test('folders: names from the path, natural order', () => {

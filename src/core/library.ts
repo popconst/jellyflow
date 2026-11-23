@@ -18,7 +18,7 @@ export interface Album {
   genres: string[]
   labels: string[]
   musicbrainz: string | undefined
-  /** "artist title year", lowercased once, for searching */
+  /** "artist title year", lowercased and without accents once, for searching */
   search: string
 }
 
@@ -58,7 +58,7 @@ export function toAlbum(item: Item): Album {
     genres: item.Genres ?? [],
     labels: item.Studios?.map((s) => s.Name) ?? [],
     musicbrainz: item.ProviderIds?.['MusicBrainzAlbum'],
-    search: `${artist} ${item.Name} ${year}`.toLowerCase(),
+    search: fold(`${artist} ${item.Name} ${year}`),
   }
 }
 
@@ -118,7 +118,7 @@ export class TrackTitles {
       const titles = this.titles.get(item.AlbumId) ?? []
       const lowered = this.lowered.get(item.AlbumId) ?? []
       titles.push(item.Name)
-      lowered.push(item.Name.toLowerCase())
+      lowered.push(fold(item.Name))
       this.titles.set(item.AlbumId, titles)
       this.lowered.set(item.AlbumId, lowered)
     }
@@ -132,8 +132,20 @@ export interface Found {
   track: string | undefined
 }
 
+/** Letters that don't come apart into a letter and an accent */
+const PLAIN: Record<string, string> = { ø: 'o', æ: 'ae', œ: 'oe', ß: 'ss', ł: 'l', đ: 'd', ð: 'd', þ: 'th', ı: 'i' }
+
+/** Lowercased, accents off: "Léon" and "leon", "Björk" and "bjork", "Știrile" and "stirile" all match */
+export function fold(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[øæœßłđðþı]/g, (c) => PLAIN[c] ?? c)
+}
+
 export function words(query: string): string[] {
-  return query.toLowerCase().split(/\s+/).filter(Boolean)
+  return fold(query).split(/\s+/).filter(Boolean)
 }
 
 /**

@@ -9,9 +9,10 @@
   import { duration, links } from '../core/details.ts'
   import { folderName, seconds, type Item } from '../core/jellyfin.ts'
   import { Keys, keyName } from '../core/keys.ts'
-  import { toAlbum, toTrack, type Album } from '../core/library.ts'
+  import { fold, toAlbum, toTrack, type Album } from '../core/library.ts'
   import Cover from './Cover.svelte'
   import Details from './Details.svelte'
+  import Disc from './Disc.svelte'
   import { player } from './player.svelte.ts'
   import Playing from './Playing.svelte'
   import { app, store, stored, typing } from './state.svelte.ts'
@@ -266,11 +267,11 @@
   /** The next item (from `start`, going `dir`, wrapping) whose name has `query` in it */
   function findFrom(start: number, query: string, dir: 1 | -1): number {
     const n = items.length
-    const q = query.toLowerCase()
+    const q = fold(query)
     for (let k = 0; k < n; k++) {
       const i = (((start + dir * k) % n) + n) % n
       const item = items[i]
-      if (item && label(item).toLowerCase().includes(q)) return i
+      if (item && fold(label(item)).includes(q)) return i
     }
     return -1
   }
@@ -431,13 +432,30 @@
 {/snippet}
 
 {#snippet row(item: Item, active: boolean, onclick: () => void, ondblclick?: () => void)}
-  <li class:cursor={active} class:playing={player.current?.id === item.Id}>
-    <button {onclick} {ondblclick}>
+  {@const playing = player.current?.id === item.Id}
+  <li class:cursor={active} class:playing>
+    <button class="entry" {onclick} {ondblclick}>
       <span class="thumb">{@render thumb(item, 96)}</span>
       <span class="name">{label(item)}</span>
       {#if item.Type === 'Audio'}<span class="meta">{duration(seconds(item.RunTimeTicks))}</span>
       {:else if item.IsFolder}<span class="meta">›</span>{/if}
     </button>
+    <!-- a track's play button, over its number, under the pointer: it plays from there (the cursor to
+         it first, as a double click does), or pauses (and plays on) the one playing. The row's own
+         click only moves the cursor -->
+    {#if item.Type === 'Audio' && ondblclick}
+      <button
+        class="play"
+        onclick={() => {
+          if (playing) return player.toggle()
+          onclick()
+          ondblclick()
+        }}
+        aria-label={playing && !player.paused ? 'Pause' : `Play ${label(item)}`}
+      >
+        <Disc sign={playing && !player.paused ? 'pause' : 'play'} size={22} />
+      </button>
+    {/if}
   </li>
 {/snippet}
 
@@ -583,7 +601,10 @@
   .parent {
     opacity: 0.85;
   }
-  li button {
+  li {
+    position: relative;
+  }
+  .entry {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -595,10 +616,10 @@
     border-radius: 6px;
     text-align: left;
   }
-  li button:hover {
+  .entry:hover {
     background: var(--hover);
   }
-  li.cursor button {
+  li.cursor .entry {
     background: var(--glass);
     box-shadow: var(--glass-edge);
   }
@@ -614,6 +635,24 @@
     overflow: hidden;
     display: grid;
     place-items: center;
+  }
+  /* a track's play button: over the number (where the row's padding puts the thumb), under the pointer */
+  .play {
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: var(--panel);
+    opacity: 0;
+  }
+  li:hover .play {
+    opacity: 1;
   }
   .num,
   .folder {

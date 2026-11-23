@@ -1,5 +1,5 @@
-// A tiny Jellyfin client: only what browsing and playing a music library
-// needs. Plain fetch and URLs, so it runs in the browser and in Node alike.
+// A tiny Jellyfin client: only what browsing and playing a music library and
+// films needs. Plain fetch and URLs, so it runs in the browser and in Node alike.
 
 export const CLIENT = 'jellyflow'
 /** The app's version, as Jellyfin lists it under Devices: package.json's (a test keeps them in step) */
@@ -25,18 +25,97 @@ export interface NameId {
 }
 
 export interface MediaStream {
+  /** Video, Audio, Subtitle, … */
   Type?: string
+  /** Its place in the file: what a choice of audio or subtitles names */
+  Index?: number
   Codec?: string
+  /** "DTS-HD MA", "Main 10", … */
+  Profile?: string
+  /** ISO 639-2: eng, rum, … */
+  Language?: string
+  /** The track's own name in the file: "Commentary", "SDH", … */
+  Title?: string
+  IsDefault?: boolean
+  IsForced?: boolean
+  IsTextSubtitleStream?: boolean
+  /** For text subtitles, after PlaybackInfo: the file to fetch them from */
+  DeliveryUrl?: string
   BitDepth?: number
   SampleRate?: number
   Channels?: number
   BitRate?: number
+  Width?: number
+  Height?: number
+  /** SDR, HDR10, DOVI, … */
+  VideoRangeType?: string
 }
 
 export interface MediaSource {
+  Id?: string
   Container?: string
   Path?: string
   MediaStreams?: MediaStream[]
+  /** After PlaybackInfo: the stream Jellyfin repackages (and converts) for this device; none when it plays the file as it is */
+  TranscodingUrl?: string
+  DefaultAudioStreamIndex?: number
+}
+
+/** What the user's done with an item */
+export interface UserData {
+  PlaybackPositionTicks?: number
+  Played?: boolean
+  /** ISO date: when it was last played (stopped partway or to the end) */
+  LastPlayedDate?: string
+  /** A series': how many of its episodes haven't been watched */
+  UnplayedItemCount?: number
+}
+
+/** How to play an item on this device: Jellyfin's PlaybackInfoResponse */
+export interface PlaybackInfo {
+  MediaSources: MediaSource[]
+  PlaySessionId?: string
+  ErrorCode?: string
+}
+
+/** What this device plays, so Jellyfin can work out what to send: its DeviceProfile (the fields used) */
+export interface DeviceProfile {
+  Name: string
+  MaxStreamingBitrate: number
+  MaxStaticBitrate: number
+  DirectPlayProfiles: { Type: string; Container: string; VideoCodec?: string; AudioCodec?: string }[]
+  TranscodingProfiles: {
+    Type: string
+    Container: string
+    Protocol: string
+    Context: string
+    VideoCodec: string
+    AudioCodec: string
+    MaxAudioChannels?: string
+    MinSegments?: number
+    BreakOnNonKeyFrames?: boolean
+  }[]
+  ContainerProfiles: never[]
+  CodecProfiles: {
+    Type: string
+    Codec: string
+    Conditions: { Condition: string; Property: string; Value: string; IsRequired: boolean }[]
+  }[]
+  SubtitleProfiles: { Format: string; Method: string }[]
+}
+
+/** A report of what's playing, for Jellyfin to keep where it's at (and show it to other apps) */
+export interface Playing {
+  ItemId: string
+  MediaSourceId?: string
+  PlaySessionId?: string
+  PositionTicks: number
+  IsPaused?: boolean
+  CanSeek?: boolean
+  PlayMethod?: 'DirectPlay' | 'DirectStream' | 'Transcode'
+  AudioStreamIndex?: number
+  SubtitleStreamIndex?: number
+  EventName?: string
 }
 
 /** The fields of Jellyfin's BaseItemDto this app reads */
@@ -62,10 +141,37 @@ export interface Item {
   Genres?: string[]
   Studios?: NameId[]
   ProviderIds?: Record<string, string>
-  People?: { Name: string; Type?: string; Role?: string }[]
+  /** Cast and crew: Actor (Role: the character), Director, Writer, Producer, Creator, … */
+  People?: { Name: string; Id?: string; Type?: string; Role?: string; PrimaryImageTag?: string }[]
+  /** Keywords: "princess", "castle", … */
+  Tags?: string[]
   MediaSources?: MediaSource[]
   Overview?: string
   ExternalUrls?: { Name: string; Url: string }[]
+  SortName?: string
+  OriginalTitle?: string
+  Taglines?: string[]
+  /** "PG-13", "R", … */
+  OfficialRating?: string
+  /** Out of 10 */
+  CommunityRating?: number
+  BackdropImageTags?: string[]
+  UserData?: UserData
+  /** ISO dates: when it came into the library; a series', when an episode last did */
+  DateCreated?: string
+  DateLastMediaAdded?: string
+  /** An episode's series and season */
+  SeriesId?: string
+  SeasonName?: string
+  /** A series': ISO date of its last episode, and Continuing or Ended */
+  EndDate?: string
+  Status?: string
+}
+
+/** Jellyfin's DisplayPreferencesDto: sent back whole when saved, with the app's own settings in CustomPrefs */
+export interface Preferences {
+  CustomPrefs?: Record<string, string | null>
+  [field: string]: unknown
 }
 
 interface Page {
@@ -128,12 +234,35 @@ export class Jellyfin {
   }
 
   async get<T>(path: string, params: Params = {}): Promise<T> {
+    return (await this.request('GET', path, params)).json() as Promise<T>
+  }
+
+  async post<T>(path: string, body: unknown, params: Params = {}): Promise<T> {
+    const response = await this.request('POST', path, params, body)
+    return (response.status === 204 ? undefined : await response.json()) as T
+  }
+
+  /**
+   * Any request, with the token. `keepalive` lets it finish after the page
+   * has gone (a last report as the tab closes)
+   */
+  async request(method: string, path: string, params: Params = {}, body?: unknown, keepalive = false): Promise<Response> {
+    const headers: Record<string, string> = { Authorization: authorization(this.device, this.session.token) }
+    if (body !== undefined) headers['Content-Type'] = 'application/json'
     const response = await fetch(this.url(path, params), {
-      headers: { Authorization: authorization(this.device, this.session.token) },
+      method,
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      keepalive,
     })
     if (response.status === 401) throw new SessionExpired()
     if (!response.ok) throw new Error(`Jellyfin said ${response.status} ${response.statusText} for ${path}`)
-    return (await response.json()) as T
+    return response
+  }
+
+  /** A URL Jellyfin gave as a path on itself (a stream's, a subtitle file's) */
+  resolve(path: string): string {
+    return this.session.server + path
   }
 
   async items(params: Params): Promise<Item[]> {
@@ -141,10 +270,74 @@ export class Jellyfin {
     return page.Items
   }
 
-  /** The user's music libraries */
-  async musicLibraries(): Promise<Item[]> {
+  /** The user's libraries: music, films, shows, … (CollectionType says which) */
+  async libraries(): Promise<Item[]> {
     const page = await this.get<Page>('/UserViews', { userId: this.session.userId })
-    return page.Items.filter((v) => v.CollectionType === 'music')
+    return page.Items
+  }
+
+  /** Every film in a library, with what the row, its page and resuming need (where it was stopped) */
+  movies(libraryId: string): Promise<Item[]> {
+    return this.items({
+      parentId: libraryId,
+      recursive: true,
+      includeItemTypes: 'Movie',
+      fields: 'Overview,Genres,SortName,OriginalTitle,Taglines,DateCreated',
+      enableUserData: true,
+      imageTypeLimit: 1,
+      enableImageTypes: 'Primary,Backdrop',
+    })
+  }
+
+  /** Every series in a library (shows, courses), with what the row and its page need */
+  series(libraryId: string): Promise<Item[]> {
+    return this.items({
+      parentId: libraryId,
+      recursive: true,
+      includeItemTypes: 'Series',
+      fields: 'Overview,Genres,SortName,DateCreated,DateLastMediaAdded',
+      enableUserData: true,
+      imageTypeLimit: 1,
+      enableImageTypes: 'Primary,Backdrop',
+    })
+  }
+
+  /** A series' episodes, every season, with where each was stopped and when it was last watched */
+  async episodes(seriesId: string): Promise<Item[]> {
+    const page = await this.get<Page>(`/Shows/${seriesId}/Episodes`, {
+      userId: this.session.userId,
+      fields: 'Overview',
+      isMissing: false,
+      enableUserData: true,
+      imageTypeLimit: 1,
+      enableImageTypes: 'Primary',
+    })
+    return page.Items
+  }
+
+  /**
+   * The series being watched: those with an episode stopped partway, and
+   * those Jellyfin has a next episode for (one was watched to the end lately)
+   */
+  async seriesInProgress(): Promise<string[]> {
+    const lean = { userId: this.session.userId, limit: 200, enableImages: false, enableUserData: false, enableTotalRecordCount: false }
+    const [resumed, next] = await Promise.all([
+      this.get<Page>('/UserItems/Resume', { ...lean, includeItemTypes: 'Episode', mediaTypes: 'Video' }),
+      this.get<Page>('/Shows/NextUp', { ...lean, enableResumable: false, enableRewatching: false }),
+    ])
+    return [...new Set([...resumed.Items, ...next.Items].map((e) => e.SeriesId).filter((id): id is string => Boolean(id)))]
+  }
+
+  /**
+   * This app's settings for the user, kept by Jellyfin (so every browser
+   * the user logs in from has them): its CustomPrefs, strings by name
+   */
+  async preferences(): Promise<Preferences> {
+    return this.get<Preferences>(`/DisplayPreferences/${CLIENT}`, { userId: this.session.userId, client: CLIENT })
+  }
+
+  async savePreferences(preferences: Preferences): Promise<void> {
+    await this.post(`/DisplayPreferences/${CLIENT}`, preferences, { userId: this.session.userId, client: CLIENT })
   }
 
   /** Every album in a library, with what the row and its search need */
@@ -211,9 +404,78 @@ export class Jellyfin {
     return this.get<Item[]>(`/Items/${id}/Ancestors`, { userId: this.session.userId })
   }
 
-  /** A front cover, fitted to `size` pixels square. Jellyfin serves images without a token */
+  /** An item's picture, filling `width` × `height` pixels. Jellyfin serves images without a token */
+  private image(id: string, type: string, tag: string, width: number, height: number, quality: number, blur?: number): string {
+    return this.url(`/Items/${id}/Images/${type}`, { tag, fillWidth: width, fillHeight: Math.round(height), quality, blur })
+  }
+
+  /** A front cover, `size` pixels square */
   imageUrl(id: string, tag: string, size: number): string {
-    return this.url(`/Items/${id}/Images/Primary`, { tag, fillWidth: size, fillHeight: size, quality: 90 })
+    return this.image(id, 'Primary', tag, size, size, 90)
+  }
+
+  /** A poster (2:3): a film's, a series', a person's photo */
+  posterUrl(id: string, tag: string, width: number): string {
+    return this.image(id, 'Primary', tag, width, width * 1.5, 90)
+  }
+
+  /** An episode's still (16:9) */
+  stillUrl(id: string, tag: string, width: number): string {
+    return this.image(id, 'Primary', tag, width, (width * 9) / 16, 85)
+  }
+
+  /** A title's backdrop (a still from it, 16:9); blurred by Jellyfin if asked (cheaper than in the browser) */
+  backdropUrl(id: string, tag: string, width: number, blur?: number): string {
+    return this.image(id, 'Backdrop/0', tag, width, (width * 9) / 16, 85, blur)
+  }
+
+  /**
+   * How to play an item on this device: Jellyfin compares the file with
+   * `profile` and answers with a stream (the file as it is, or repackaged,
+   * converting only what the device can't play) and a session to report to
+   */
+  playbackInfo(
+    itemId: string,
+    profile: DeviceProfile,
+    choice: { mediaSourceId?: string | undefined; audio?: number | undefined; subtitles?: number | undefined } = {},
+  ): Promise<PlaybackInfo> {
+    return this.post<PlaybackInfo>(`/Items/${itemId}/PlaybackInfo`, {
+      UserId: this.session.userId,
+      DeviceProfile: profile,
+      MaxStreamingBitrate: profile.MaxStreamingBitrate,
+      MediaSourceId: choice.mediaSourceId,
+      AudioStreamIndex: choice.audio,
+      // -1: none
+      SubtitleStreamIndex: choice.subtitles ?? -1,
+      EnableDirectPlay: true,
+      EnableDirectStream: true,
+      EnableTranscoding: true,
+      AllowVideoStreamCopy: true,
+      AllowAudioStreamCopy: true,
+      AutoOpenLiveStream: true,
+    })
+  }
+
+  /** A video file as it is, for a browser that plays it (no repackaging) */
+  videoUrl(itemId: string, mediaSourceId: string | undefined): string {
+    return this.url(`/Videos/${itemId}/stream`, { static: true, mediaSourceId, deviceId: this.device.id })
+  }
+
+  /** Text subtitles as WebVTT: from where PlaybackInfo said (`deliveryUrl`), else the stream's usual place */
+  async subtitles(itemId: string, mediaSourceId: string | undefined, index: number, deliveryUrl?: string): Promise<string> {
+    const path = deliveryUrl ?? `/Videos/${itemId}/${mediaSourceId}/Subtitles/${index}/0/Stream.vtt`
+    return (await this.request('GET', path.replace(/^https?:\/\/[^/]+/, ''))).text()
+  }
+
+  /** Ends a stream Jellyfin is packaging for this device, once it's no longer wanted */
+  async endStream(playSessionId: string): Promise<void> {
+    await this.request('DELETE', '/Videos/ActiveEncodings', { deviceId: this.device.id, playSessionId })
+  }
+
+  /** Tells Jellyfin playing started, is going on, or stopped: it keeps where it's at for resuming, anywhere */
+  async report(event: 'start' | 'progress' | 'stopped', playing: Playing, keepalive = false): Promise<void> {
+    const path = { start: '/Sessions/Playing', progress: '/Sessions/Playing/Progress', stopped: '/Sessions/Playing/Stopped' }[event]
+    await this.request('POST', path, {}, playing, keepalive)
   }
 
   /** The track's file as it is (FLAC, MP3, …): every browser plays those */
@@ -265,4 +527,14 @@ export function byDiscAndNumber(a: Item, b: Item): number {
 /** Jellyfin's ticks are 100 ns */
 export function seconds(ticks: number | undefined): number {
   return ticks ? ticks / 10_000_000 : 0
+}
+
+export function ticks(seconds: number): number {
+  return Math.round(seconds * 10_000_000)
+}
+
+/** Jellyfin's ISO dates as milliseconds; 0 for none */
+export function date(iso: string | undefined): number {
+  const t = iso ? Date.parse(iso) : Number.NaN
+  return Number.isFinite(t) ? t : 0
 }

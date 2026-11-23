@@ -10,6 +10,10 @@
   --accent: #00a4dc;
   --accent-2: #aa5cc3;
   --hi: #ffd84d;
+  /* IMDb's yellow: the stars a title is rated */
+  --gold: #f5c518;
+  /* where a picture is missing (a poster, a face, a still) */
+  --placeholder: linear-gradient(160deg, #2c2c33, #121216);
   /* the cursor: a pane of glass over what's behind it, lit from above like the
      covers on the floor; a lighter wash on hover */
   --glass: linear-gradient(to bottom, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0.08) 55%, rgb(255 255 255 / 0.11));

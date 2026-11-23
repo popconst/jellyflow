@@ -1,10 +1,15 @@
 <!--
-  The mark of the track playing in a list: a few bars in its album's colours,
-  like the spectrum's. They dance while it plays and rest while it's paused.
+  The mark of the track playing in a list: four bars in its album's colours,
+  like the spectrum's, that move with its sound (bass to treble); paused,
+  two of them stand still, a pause sign.
 -->
 <script lang="ts">
+  import { levels, tap } from './levels.ts'
   import { coverColours, stops } from './palette.ts'
   import { player } from './player.svelte.ts'
+
+  /** How tall the bars stand at the quietest */
+  const LOW = 0.12
 
   let colours = $state(stops([]))
   $effect(() => {
@@ -18,6 +23,22 @@
       live = false
     }
   })
+
+  // the bars follow the sound, frame by frame, while it plays
+  let heights = $state([LOW, LOW, LOW, LOW])
+  $effect(() => {
+    const source = player.source
+    if (!source || player.paused) return
+    const analyser = tap(source)
+    const data = new Uint8Array(analyser.frequencyBinCount)
+    let frame = 0
+    const tick = () => {
+      heights = levels(analyser, data).map((l) => LOW + (1 - LOW) * l)
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  })
 </script>
 
 <span
@@ -27,7 +48,10 @@
   role="img"
   aria-label={player.paused ? 'Paused' : 'Playing'}
 >
-  <i></i><i></i><i></i><i></i>
+  {#if player.paused}<i></i><i></i>
+  {:else}
+    {#each heights as h, i (i)}<i style:transform="scaleY({h.toFixed(3)})"></i>{/each}
+  {/if}
 </span>
 
 <style>
@@ -44,31 +68,13 @@
     border-radius: 1px;
     background: var(--fill);
     transform-origin: 50% 100%;
-    animation: dance 900ms ease-in-out infinite alternate;
     filter: drop-shadow(0 0 3px rgb(255 255 255 / 0.25));
   }
-  i:nth-child(2) {
-    animation-duration: 640ms;
-    animation-delay: -300ms;
-  }
-  i:nth-child(3) {
-    animation-duration: 1040ms;
-    animation-delay: -520ms;
-  }
-  i:nth-child(4) {
-    animation-duration: 760ms;
-    animation-delay: -120ms;
+  /* paused: ❚❚, as wide as the four bars */
+  .paused {
+    gap: 4px;
   }
   .paused i {
-    animation: none;
-    transform: scaleY(0.25);
-  }
-  @keyframes dance {
-    from {
-      transform: scaleY(0.2);
-    }
-    to {
-      transform: scaleY(1);
-    }
+    width: 4px;
   }
 </style>

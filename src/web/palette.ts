@@ -100,6 +100,11 @@ export function coverColours(albumId: string, tag: string | undefined): Promise<
   return colours
 }
 
+/** A seek bar's fill, left to right, from `stops` (none until the colours are in) */
+export function seekFill(colours: string[]): string | undefined {
+  return colours.length === 3 ? `linear-gradient(90deg, ${colours[2]}, ${colours[1]}, ${colours[0]})` : undefined
+}
+
 /** A gradient for bars, top to bottom: lighter, the cover's colour(s), deeper */
 export function stops(colours: string[]): string[] {
   const [main, second, third] = colours

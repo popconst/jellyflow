@@ -2,8 +2,10 @@
 <script lang="ts">
   import { duration } from '../core/details.ts'
   import type { Track } from '../core/library.ts'
+  import Disc from './Disc.svelte'
   import { player } from './player.svelte.ts'
   import Playing from './Playing.svelte'
+  import { keepInView } from './scroll.ts'
 
   interface Props {
     tracks: Track[]
@@ -22,20 +24,20 @@
 
   // the cursor's row in view: the list scrolls, nothing around it (it may sit in a 3D scene)
   $effect(() => {
-    if (cursor === undefined || !list) return
-    const row = list.children[cursor]
-    if (!(row instanceof HTMLElement)) return
-    if (row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop
-    else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight)
-      list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight
+    if (cursor !== undefined) keepInView(list, list?.children[cursor])
   })
 </script>
 
 <ol bind:this={list}>
   {#each tracks as track, i (track.id)}
-    <li class:cursor={i === cursor} class:playing={player.current?.id === track.id}>
-      <button onclick={() => onplay(i)}>
-        <span class="n">{#if player.current?.id === track.id}<Playing />{:else}{number(track)}{/if}</span>
+    {@const playing = player.current?.id === track.id}
+    <li class:cursor={i === cursor} class:playing>
+      <!-- the one playing: pause it, or play it on; any other: play from it -->
+      <button onclick={() => (playing ? player.toggle() : onplay(i))}>
+        <span class="n">
+          <span class="number">{#if playing}<Playing />{:else}{number(track)}{/if}</span>
+          <span class="go"><Disc sign={playing && !player.paused ? 'pause' : 'play'} size={20} /></span>
+        </span>
         <span class="t">{track.title}</span>
         <span class="d">{duration(track.seconds)}</span>
       </button>
@@ -83,7 +85,23 @@
     align-self: center;
   }
   .n {
+    position: relative;
     text-align: right;
+  }
+  /* under the pointer, the number (or the playing mark) is the play button */
+  .go {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    opacity: 0;
+  }
+  li:hover .go {
+    opacity: 1;
+  }
+  li:hover .number {
+    opacity: 0;
   }
   .t {
     overflow: hidden;
