@@ -12,6 +12,7 @@
   import Details from './Details.svelte'
   import { player } from './player.svelte.ts'
   import Row, { FOCUS } from './Row.svelte'
+  import SearchLine from './SearchLine.svelte'
   import { app, store, stored, typing } from './state.svelte.ts'
   import TrackList from './TrackList.svelte'
   import Visualizer from './Visualizer.svelte'
@@ -42,7 +43,6 @@
   /** What the row is filtered by: the query, once typing pauses */
   let applied = $state(resume ? '' : (saved?.filter ?? ''))
   let filterTimer: ReturnType<typeof setTimeout> | undefined
-  let input = $state<HTMLInputElement>()
 
   let row = $state<Row<Album>>()
   /** Where the row is, fractional while it moves */
@@ -111,39 +111,43 @@
     filterTimer = setTimeout(applyTyped, FILTER_MS)
   }
 
-  function onSearchKey(e: KeyboardEvent): void {
-    if (mode.kind !== 'search') return
-    const { from, prev } = mode
-    const pending = () => filterTimer !== undefined && applyTyped()
-    if (e.ctrlKey && e.key === 'u') {
-      query = ''
-      typed()
-    } else if (e.key === 'Escape') {
-      // back to the row as it was
-      mode = BROWSE
-      query = prev
-      applyFilter(from)
-    } else if (e.key === 'Enter') {
-      // browse the matches; nothing to browse is the same as Esc
-      pending()
-      mode = BROWSE
-      if (!found.length) {
-        query = prev
-        applyFilter(from)
-      } else if (!filtered) query = applied = ''
-    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-      pending()
-      row?.press(-1, e.repeat, e.code)
-    } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-      pending()
-      row?.press(1, e.repeat, e.code)
-    } else return
-    e.preventDefault()
+  /** What's typed and not yet applied, now */
+  function pending(): void {
+    if (filterTimer !== undefined) applyTyped()
   }
 
-  $effect(() => {
-    if (mode.kind === 'search') input?.focus()
-  })
+  // the search's keys (SearchLine)
+
+  function clearSearch(): void {
+    query = ''
+    typed()
+  }
+
+  /** Esc: back to the row as it was */
+  function cancelSearch(): void {
+    if (mode.kind !== 'search') return
+    const { from, prev } = mode
+    mode = BROWSE
+    query = prev
+    applyFilter(from)
+  }
+
+  /** Enter: browse the matches; nothing to browse is the same as Esc */
+  function doneSearch(): void {
+    if (mode.kind !== 'search') return
+    const { from, prev } = mode
+    pending()
+    mode = BROWSE
+    if (!found.length) {
+      query = prev
+      applyFilter(from)
+    } else if (!filtered) query = applied = ''
+  }
+
+  function moveWhileSearching(dir: -1 | 1, e: KeyboardEvent): void {
+    pending()
+    row?.press(dir, e.repeat, e.code)
+  }
 
   async function tracksOf(a: Album): Promise<Track[] | undefined> {
     try {
@@ -358,11 +362,9 @@
     if (handled) e.preventDefault()
   }
 
-  /** A click away from the open album (or its details), anywhere but on a cover or the page itself, closes it */
-  function clickAway(e: MouseEvent): void {
-    if (mode.kind !== 'tracks' && mode.kind !== 'info') return
-    if (e.target instanceof Element && e.target.closest('[data-page], .details, button, input, a')) return
-    mode = BROWSE
+  /** A click on the floor, away from the covers: the open album (or its details) closes */
+  function clickAway(): void {
+    if (mode.kind === 'tracks' || mode.kind === 'info') mode = BROWSE
   }
 
   /** A cover clicked: the row glides to it, and it opens once there; the open album's cover shuts it again */
@@ -378,9 +380,7 @@
 
 <svelte:window {onkeydown} />
 
-<!-- the keyboard's way out is Esc; a click away is the mouse's -->
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<section class="flow" class:open={mode.kind === 'tracks'} class:info={mode.kind === 'info'} onclick={clickAway}>
+<section class="flow" class:open={mode.kind === 'tracks'} class:info={mode.kind === 'info'}>
   <div class="stagebox">
     <Row
       bind:this={row}
@@ -395,6 +395,7 @@
       url={(a, px) => (a.imageTag && app.client ? app.client.imageUrl(a.id, a.imageTag, px) : undefined)}
       label={(a) => `${a.title} by ${a.artist}`}
       onclick={clickCover}
+      onfloor={clickAway}
     >
       {#snippet art(a, px)}
         <Cover id={a.id} tag={a.imageTag} size={px} title={a.title} lazy={false} />
@@ -474,27 +475,20 @@
     <aside class="details"><Details {album} /></aside>
   {/if}
 
-  <div class="line" class:quiet={app.quiet}>
-    {#if mode.kind === 'search'}
-      <span class="slash">/</span>
-      <input
-        bind:this={input}
-        bind:value={query}
-        oninput={typed}
-        onkeydown={onSearchKey}
-        spellcheck="false"
-        autocomplete="off"
-        placeholder="artist, album, year or track title"
-      />
-      <span class="count">{found.length} {found.length === 1 ? 'album' : 'albums'}</span>
-    {:else}
-      {#if filtered}
-        <span class="filter">/{applied}</span>
-        <span class="hint"><kbd>Esc</kbd> whole library · <kbd>/</kbd> edit</span>
-      {/if}
-      <span class="count">{found.length ? place + 1 : 0} / {found.length}</span>
-    {/if}
-  </div>
+  <SearchLine
+    searching={mode.kind === 'search'}
+    bind:query
+    placeholder="artist, album, year or track title"
+    {applied}
+    everything="whole library"
+    count={mode.kind === 'search' ? `${found.length} ${found.length === 1 ? 'album' : 'albums'}` : `${found.length ? place + 1 : 0} / ${found.length}`}
+    quiet={app.quiet}
+    oninput={typed}
+    onclear={clearSearch}
+    oncancel={cancelSearch}
+    ondone={doneSearch}
+    onmove={moveWhileSearching}
+  />
 </section>
 
 <style>
@@ -628,25 +622,6 @@
     z-index: 3000;
   }
   /* the filter and the place in the row, floating over the floor */
-  /* faded while the app is quiet (a page open, nothing done for a while) */
-  .line.quiet {
-    opacity: 0;
-  }
-  .line {
-    position: absolute;
-    transition: opacity 700ms;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 4000;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    height: 40px;
-    padding: 0 18px;
-    font: 13px var(--mono);
-    background: linear-gradient(to top, rgb(0 0 0 / 0.75), transparent);
-  }
   .glow {
     position: absolute;
     left: 0;
@@ -654,26 +629,5 @@
     bottom: 0;
     opacity: 0.6;
     pointer-events: none;
-  }
-  .slash,
-  .filter {
-    color: var(--accent);
-    font-weight: 700;
-  }
-  input {
-    flex: 1;
-    background: none;
-    border: 0;
-    outline: 0;
-    font: 15px var(--mono);
-  }
-  .hint {
-    color: var(--text-3);
-    font-family: var(--font);
-    font-size: 13px;
-  }
-  .count {
-    margin-left: auto;
-    color: var(--text-2);
   }
 </style>

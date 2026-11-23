@@ -11,13 +11,13 @@
 <span class="progress"><span style:width="{progress(of) * 100}%"></span></span>
 
 <style>
-  /* where the picture shows scaled (a row of posters), --unscale sizes it back up to read the same */
+  /* on a poster in a row shown scaled (Row's --row-scale), as thick on screen as anywhere */
   .progress {
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    height: calc(4px * var(--unscale, 1));
+    height: calc(4px / var(--row-scale, 1));
     background: rgb(255 255 255 / 0.25);
   }
   .progress span {

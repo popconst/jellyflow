@@ -9,7 +9,6 @@
 -->
 <script lang="ts">
   import { untrack } from 'svelte'
-  import { fade } from 'svelte/transition'
   import { duration } from '../core/details.ts'
   import { keyName } from '../core/keys.ts'
   import { searchShelf, type Shelf, type Tile } from '../core/shelves.ts'
@@ -19,6 +18,7 @@
   import Progress from './Progress.svelte'
   import Row, { FOCUS, layout, type Geometry } from './Row.svelte'
   import Score from './Score.svelte'
+  import SearchLine from './SearchLine.svelte'
   import { app, store, stored, typing } from './state.svelte.ts'
   import TitlePage from './TitlePage.svelte'
   import { videos } from './videos.svelte.ts'
@@ -64,7 +64,6 @@
 
   let query = $state(saved.query ?? '')
   let applied = $state(saved.query ?? '')
-  let input = $state<HTMLInputElement>()
   let section = $state<HTMLElement>()
   let box = $state({ w: 1200, h: 700 })
   /** The row with the keys, by key; by place if it's gone (a filter, a reload) */
@@ -214,12 +213,6 @@
     mode = BROWSE
   }
 
-  /** A click away from the open page, anywhere but on a poster or the page itself, closes it */
-  function clickAway(e: MouseEvent): void {
-    if (mode.kind !== 'page') return
-    if (e.target instanceof Element && e.target.closest('[data-page], button, input, a')) return
-    closePage()
-  }
 
   /** A poster clicked, in any row: its row comes forward and glides to it, and it opens once there; the open title's poster shuts it again */
   function clickTile(row: number, index: number, middle: boolean): void {
@@ -259,31 +252,36 @@
     store('jellyflow.watching', { shelf: focusKey, at, query: again })
   }
 
-  function onSearchKey(e: KeyboardEvent): void {
-    if (mode.kind !== 'search') return
-    const { prev } = mode
-    if (e.ctrlKey && e.key === 'u') {
-      query = ''
-      search('')
-    } else if (e.key === 'Escape') {
-      mode = BROWSE
-      query = prev
-      search(prev)
-    } else if (e.key === 'Enter') {
-      mode = BROWSE
-      if (!shelves[0]?.tiles.length) {
-        query = prev
-        search(prev)
-      }
-    } else if (e.key === 'ArrowLeft') rows['search']?.press(-1, e.repeat, e.code)
-    else if (e.key === 'ArrowRight') rows['search']?.press(1, e.repeat, e.code)
-    else return
-    e.preventDefault()
+  // the search's keys (SearchLine)
+
+  function clearSearch(): void {
+    query = ''
+    search('')
   }
 
-  $effect(() => {
-    if (mode.kind === 'search') input?.focus()
-  })
+  /** Esc: the rows as they were */
+  function cancelSearch(): void {
+    if (mode.kind !== 'search') return
+    const { prev } = mode
+    mode = BROWSE
+    query = prev
+    search(prev)
+  }
+
+  /** Enter: browse what was found; nothing found is the same as Esc */
+  function doneSearch(): void {
+    if (mode.kind !== 'search') return
+    const { prev } = mode
+    mode = BROWSE
+    if (!shelves[0]?.tiles.length) {
+      query = prev
+      search(prev)
+    }
+  }
+
+  function moveWhileSearching(dir: -1 | 1, e: KeyboardEvent): void {
+    rows['search']?.press(dir, e.repeat, e.code)
+  }
 
   /** Watch's own keys (the row's are Row's): rows, opening, Continue Watching, search */
   function browseKey(key: string, repeat: boolean): boolean {
@@ -397,9 +395,7 @@
 
 <svelte:window {onkeydown} />
 
-<!-- the keyboard's way out is Esc; a click away is the mouse's -->
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<section class="watch" class:open bind:this={section} onclick={clickAway}>
+<section class="watch" class:open bind:this={section}>
   <!-- each picture opaque, fading in over the last; the stack dimmed as one, so a covered one goes unseen -->
   <div class="backdrops">
     {#each layers as layer (layer.key)}
@@ -423,7 +419,6 @@
         style:margin-left="{-stage.w / 2}px"
         style:top="{label(i)}px"
         style:transform="scale({scale})"
-        style:--unscale={1 / scale}
       >
         <Row
           bind:this={rows[s.key]}
@@ -436,7 +431,8 @@
           step={STEP}
           reach={REACH}
           span={box.w / scale}
-          zoom={Math.max(scale, zoomed)}
+          {scale}
+          fetchScale={Math.max(scale, zoomed)}
           box={stage}
           reflection={REFLECTION}
           sideways
@@ -444,6 +440,7 @@
           url={(t, px) => (t.title.posterTag && app.client ? app.client.posterUrl(t.title.id, t.title.posterTag, px) : undefined)}
           label={(t) => `${t.title.title}${t.title.year ? ` (${t.title.year})` : ''}`}
           onclick={(index, middle) => clickTile(i, index, middle)}
+          onfloor={closePage}
         >
           {#snippet art(t, px)}
             <Poster id={t.title.id} tag={t.title.posterTag} width={px} title={t.title.title} />
@@ -505,31 +502,24 @@
     </div>
   {/if}
 
-  <div class="line" class:quiet={app.quiet}>
-    {#if mode.kind === 'search'}
-      <span class="slash">/</span>
-      <input
-        bind:this={input}
-        bind:value={query}
-        oninput={() => search(query)}
-        onkeydown={onSearchKey}
-        spellcheck="false"
-        autocomplete="off"
-        placeholder="title, year or genre"
-      />
-      <span class="count">{shelves[0]?.tiles.length ?? 0} found</span>
-    {:else}
-      {#if applied.trim()}
-        <span class="filter">/{applied}</span>
-        <span class="hint"><kbd>Esc</kbd> all rows · <kbd>/</kbd> edit</span>
-      {/if}
-      {#if note}
-        <span class="note" transition:fade={{ duration: 200 }}>{note}</span>
-      {:else if shelf?.key === 'continue' && !open}
-        <span class="hint"><kbd>x</kbd> takes it off Continue Watching</span>
-      {/if}
-    {/if}
-  </div>
+  <SearchLine
+    searching={mode.kind === 'search'}
+    bind:query
+    placeholder="title, year or genre"
+    {applied}
+    everything="all rows"
+    count={mode.kind === 'search' ? `${shelves[0]?.tiles.length ?? 0} found` : undefined}
+    note={note || undefined}
+    hint={shelf?.key === 'continue' && !open ? removeHint : undefined}
+    quiet={app.quiet}
+    oninput={() => search(query)}
+    onclear={clearSearch}
+    oncancel={cancelSearch}
+    ondone={doneSearch}
+    onmove={moveWhileSearching}
+  />
+
+  {#snippet removeHint()}<kbd>x</kbd> takes it off Continue Watching{/snippet}
 </section>
 
 <style>
@@ -671,7 +661,7 @@
     color: var(--text-2);
     font-size: clamp(15px, 1.3vw, 19px);
   }
-  /* on the posters, which show scaled: sized back up (--unscale) to read the same in every row */
+  /* on the posters, in rows shown scaled: sized by the row's scale (--row-scale) to read the same in every row */
   .watched,
   .episode {
     position: absolute;
@@ -683,19 +673,19 @@
     box-shadow: var(--glass-edge);
   }
   .watched {
-    top: calc(6px * var(--unscale, 1));
-    right: calc(6px * var(--unscale, 1));
-    width: calc(22px * var(--unscale, 1));
-    height: calc(22px * var(--unscale, 1));
+    top: calc(6px / var(--row-scale));
+    right: calc(6px / var(--row-scale));
+    width: calc(22px / var(--row-scale));
+    height: calc(22px / var(--row-scale));
     border-radius: 50%;
-    font-size: calc(13px * var(--unscale, 1));
+    font-size: calc(13px / var(--row-scale));
   }
   .episode {
-    left: calc(6px * var(--unscale, 1));
-    bottom: calc(10px * var(--unscale, 1));
-    padding: calc(2px * var(--unscale, 1)) calc(8px * var(--unscale, 1));
+    left: calc(6px / var(--row-scale));
+    bottom: calc(10px / var(--row-scale));
+    padding: calc(2px / var(--row-scale)) calc(8px / var(--row-scale));
     border-radius: 999px;
-    font-size: calc(12px * var(--unscale, 1));
+    font-size: calc(12px / var(--row-scale));
   }
   .empty {
     position: absolute;
@@ -704,45 +694,5 @@
     place-items: center;
     color: var(--text-2);
     font-size: 16px;
-  }
-  /* faded while the app is quiet (a page open, nothing done for a while) */
-  .line.quiet {
-    opacity: 0;
-  }
-  .line {
-    position: absolute;
-    transition: opacity 700ms;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 4000;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    height: 40px;
-    padding: 0 18px;
-    font: 13px var(--mono);
-    background: linear-gradient(to top, rgb(0 0 0 / 0.8), transparent);
-  }
-  .slash,
-  .filter {
-    color: var(--accent);
-    font-weight: 700;
-  }
-  input {
-    flex: 1;
-    background: none;
-    border: 0;
-    outline: 0;
-    font: 15px var(--mono);
-  }
-  .hint,
-  .note {
-    color: var(--text-2);
-    font-family: var(--font);
-    font-size: 13px;
-  }
-  .note {
-    color: var(--text);
   }
 </style>

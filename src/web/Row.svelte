@@ -74,8 +74,13 @@
     reach?: number
     /** How much of the stage's width shows (the view may scale the row): covers are drawn to reach that far */
     span?: number | undefined
-    /** How big the row shows (the view may scale it): covers are fetched for that size */
-    zoom?: number
+    /** How big the row shows on screen (the view may scale it): a cover rising under the pointer, and badges
+        sized with --row-scale, rise and read the same in every row */
+    scale?: number
+    /** The size covers are fetched for, as a scale: by default how big the row shows (a row that will grow can ask for more) */
+    fetchScale?: number | undefined
+    /** A click on the floor, away from the covers and the page: a click away */
+    onfloor?: (() => void) | undefined
     /** The stage's size, if the view sets it (else it's measured) */
     box?: { w: number; h: number } | undefined
     /** How far down a cover's reflection shows, as a share of its height */
@@ -92,7 +97,7 @@
     onclick: (index: number, middle: boolean) => void
     /** Behind the covers (the floor's glow) */
     under?: Snippet<[Geometry]>
-    /** On the page beside the middle cover; elements with data-page scroll */
+    /** On the page beside the middle cover (scrolling over it scrolls it, not the row) */
     beside?: Snippet<[Geometry]>
     /** On each cover (a progress bar) */
     badge?: Snippet<[T]>
@@ -109,7 +114,9 @@
     step = 0.13,
     reach = 14,
     span,
-    zoom = 1,
+    scale = 1,
+    fetchScale,
+    onfloor,
     box: given,
     reflection = 0.45,
     sideways = false,
@@ -152,8 +159,9 @@
   const side = $derived(Math.min(reach, Math.ceil(((span ?? box.w) / 2 / width - GAP) / step) + 2))
   const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1
   /** Covers moving by are fetched small; the one in the middle sharp once the row stops */
-  const thumb = $derived(width * zoom * dpr <= 340 ? 300 : 500)
-  const sharp = $derived(Math.min(1200, Math.ceil((width * zoom * FOCUS * dpr) / 200) * 200))
+  const fetchAt = $derived(fetchScale ?? scale)
+  const thumb = $derived(width * fetchAt * dpr <= 340 ? 300 : 500)
+  const sharp = $derived(Math.min(1200, Math.ceil((width * fetchAt * FOCUS * dpr) / 200) * 200))
   const geometry = $derived<Geometry>({ size, width, floor, box, thumb })
   const page = $derived(pageWidth?.(geometry) ?? size * FOCUS)
 
@@ -377,7 +385,7 @@
     const onwheel = (e: WheelEvent) => {
       // the page open: it scrolls (its tracks), the rest stays still
       if (open) {
-        if (!(e.target instanceof Element && e.target.closest('[data-page]'))) e.preventDefault()
+        if (!(e.target instanceof Element && e.target.closest('.page'))) e.preventDefault()
         return
       }
       const across = Math.abs(e.deltaX) > Math.abs(e.deltaY)
@@ -394,17 +402,30 @@
       }, 140)
       kick()
     }
+    // a click on the floor, not on a cover or the page (the mouse's way out; the keyboard's is the view's)
+    const onclick = (e: MouseEvent) => {
+      if (!(e.target instanceof Element && e.target.closest('.cover, .page'))) onfloor?.()
+    }
     el.addEventListener('wheel', onwheel, { passive: false })
+    el.addEventListener('click', onclick)
     return () => {
       resize.disconnect()
       el.removeEventListener('wheel', onwheel)
+      el.removeEventListener('click', onclick)
     }
   })
 </script>
 
 <svelte:window {onkeyup} {onblur} />
 
-<div class="stage" class:open class:moving={!settled} bind:this={stage} style:--reflection="{reflection * 100}%">
+<div
+  class="stage"
+  class:open
+  class:moving={!settled}
+  bind:this={stage}
+  style:--reflection="{reflection * 100}%"
+  style:--row-scale={scale}
+>
   {@render under?.(geometry)}
   <div
     class="row"
@@ -444,7 +465,6 @@
     {#if open && beside}
       <div
         class="page"
-        data-page
         transition:fold
         style:left="calc(50% + {(width * FOCUS) / 2}px)"
         style:top="{floor - size * FOCUS}px"
@@ -464,8 +484,8 @@
     position: relative;
     height: 100%;
     overflow: hidden;
-    /* how far a cover under the pointer rises */
-    --lift: calc(12px * var(--unscale, 1));
+    /* how far a cover under the pointer rises: as far on screen in a row the view shows scaled */
+    --lift: calc(12px / var(--row-scale));
   }
   /* one 3D scene: the covers are sorted by depth, not by a fixed order (no overflow
      here, or the browser flattens it) */
@@ -493,8 +513,7 @@
       translate 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
   }
   /* a side cover under the pointer, the row at rest, rises off the floor (its reflection sinking as
-     far, as on a mirror) and is lit a little: a click opens it. --lift is in the stage's pixels: a
-     row the view shows scaled down (--unscale) rises as far on screen */
+     far, as on a mirror) and is lit a little: a click opens it */
   .stage:not(.moving) .cover.aside:hover {
     translate: 0 calc(-1 * var(--lift));
   }

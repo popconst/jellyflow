@@ -412,23 +412,9 @@
 
 <svelte:window {onkeydown} />
 
-{#snippet thumb(item: Item, size: number, play?: () => void)}
+{#snippet thumb(item: Item, size: number)}
   {#if item.Type === 'Audio'}
-    {@const playing = player.current?.id === item.Id}
-    <span class="num">
-      <span class="number">{#if playing}<Playing />{:else}{item.IndexNumber ?? '·'}{/if}</span>
-      <!-- a track's play button, under the pointer: a click plays from it, or pauses (and plays on) the one
-           playing; a click on the row only moves the cursor -->
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <span
-        class="go"
-        onclick={(e) => {
-          e.stopPropagation()
-          if (playing) player.toggle()
-          else play?.()
-        }}><Disc sign={playing && !player.paused ? 'pause' : 'play'} size={22} /></span
-      >
-    </span>
+    <span class="num">{#if player.current?.id === item.Id}<Playing />{:else}{item.IndexNumber ?? '·'}{/if}</span>
   {:else if item.ImageTags?.['Primary'] || item.Type === 'MusicAlbum'}
     <Cover id={item.Id} tag={item.ImageTags?.['Primary']} {size} title={label(item)} />
   {:else}
@@ -446,20 +432,30 @@
 {/snippet}
 
 {#snippet row(item: Item, active: boolean, onclick: () => void, ondblclick?: () => void)}
-  <!-- a track's play button: the cursor to it, then what a double click does (play from it) -->
-  {@const play = ondblclick
-    ? () => {
-        onclick()
-        ondblclick()
-      }
-    : undefined}
-  <li class:cursor={active} class:playing={player.current?.id === item.Id}>
-    <button {onclick} {ondblclick}>
-      <span class="thumb">{@render thumb(item, 96, play)}</span>
+  {@const playing = player.current?.id === item.Id}
+  <li class:cursor={active} class:playing>
+    <button class="entry" {onclick} {ondblclick}>
+      <span class="thumb">{@render thumb(item, 96)}</span>
       <span class="name">{label(item)}</span>
       {#if item.Type === 'Audio'}<span class="meta">{duration(seconds(item.RunTimeTicks))}</span>
       {:else if item.IsFolder}<span class="meta">›</span>{/if}
     </button>
+    <!-- a track's play button, over its number, under the pointer: it plays from there (the cursor to
+         it first, as a double click does), or pauses (and plays on) the one playing. The row's own
+         click only moves the cursor -->
+    {#if item.Type === 'Audio' && ondblclick}
+      <button
+        class="play"
+        onclick={() => {
+          if (playing) return player.toggle()
+          onclick()
+          ondblclick()
+        }}
+        aria-label={playing && !player.paused ? 'Pause' : `Play ${label(item)}`}
+      >
+        <Disc sign={playing && !player.paused ? 'pause' : 'play'} size={22} />
+      </button>
+    {/if}
   </li>
 {/snippet}
 
@@ -605,7 +601,10 @@
   .parent {
     opacity: 0.85;
   }
-  li button {
+  li {
+    position: relative;
+  }
+  .entry {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -617,10 +616,10 @@
     border-radius: 6px;
     text-align: left;
   }
-  li button:hover {
+  .entry:hover {
     background: var(--hover);
   }
-  li.cursor button {
+  li.cursor .entry {
     background: var(--glass);
     box-shadow: var(--glass-edge);
   }
@@ -637,20 +636,23 @@
     display: grid;
     place-items: center;
   }
-  /* the number, and over it the play button, in one place; the button shows under the pointer */
-  .num .number,
-  .num .go {
-    grid-area: 1 / 1;
-  }
-  .num .go {
+  /* a track's play button: over the number (where the row's padding puts the thumb), under the pointer */
+  .play {
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: var(--panel);
     opacity: 0;
-    cursor: pointer;
   }
-  li:hover .go {
+  li:hover .play {
     opacity: 1;
-  }
-  li:hover .number {
-    opacity: 0;
   }
   .num,
   .folder {

@@ -1,35 +1,36 @@
 <!--
   The player for films and episodes, full window, in the manner of YouTube's:
   the picture, and over it controls that fade away while it plays (moving
-  the mouse or a key brings them back). At an episode's end the next one
-  follows after a countdown, as on Netflix. Jellyfin sends the file's streams untouched wherever the
-  browser plays them and converts only what it can't, without loss
-  (core/playback.ts); the settings say which. hls.js plays the stream where
-  the browser doesn't play HLS itself (all but Safari). Where it's at goes
-  back to Jellyfin as it plays, so any of its apps resumes there.
+  the mouse or a key brings them back). The stream is stream.svelte.ts';
+  the seek bar, the subtitles, the settings and the next episode's card are
+  their own components. At an episode's end the next one follows after a
+  countdown, as on Netflix.
 -->
 <script lang="ts">
-  import type Hls from 'hls.js'
   import { onMount, untrack } from 'svelte'
   import { duration } from '../core/details.ts'
-  import { ticks, type MediaSource as Source, type Playing } from '../core/jellyfin.ts'
+  import type { MediaSource as Source } from '../core/jellyfin.ts'
   import {
     audioTracks,
     conversion,
     deviceProfile,
-    pickQuality,
     pickAudio,
+    pickQuality,
     pickSubtitles,
     qualities,
-    playMethod,
     subtitleTracks,
     type Quality,
     type Track,
   } from '../core/playback.ts'
-  import { linesAt, parseVtt, type Cue } from '../core/vtt.ts'
+  import { parseVtt, type Cue } from '../core/vtt.ts'
+  import Captions from './Captions.svelte'
   import { coverColours, seekFill, stops } from './palette.ts'
+  import PlayerMenu from './PlayerMenu.svelte'
+  import SeekBar from './SeekBar.svelte'
   import { app, store, stored } from './state.svelte.ts'
-  import { browserCaps, nativeHls, watch, type Showing } from './watch.svelte.ts'
+  import { Stream } from './stream.svelte.ts'
+  import UpNext from './UpNext.svelte'
+  import { browserCaps, watch, type Showing } from './watch.svelte.ts'
 
   interface Props {
     /** The film or episode, with its streams, and the second to start at */
@@ -41,8 +42,6 @@
   /** A new one is a new player */
   const film = untrack(() => showing)
 
-  /** Where it's at goes to Jellyfin this often while it plays (ms) */
-  const REPORT_EVERY = 10_000
   /** The controls fade this long after the last mouse move or key (ms) */
   const IDLE = 2600
   /** At an episode's end, the next one starts after this many seconds */
@@ -51,19 +50,21 @@
 
   const client = app.client
   const caps = browserCaps()
-  /** The file's streams, before Jellyfin has said how it sends them (a new film is a new player) */
+  /** The file's streams, before Jellyfin has said how it sends them */
   const file: Source = film.item.MediaSources?.[0] ?? {}
   /** The picture qualities to choose from: the file as it is, or Jellyfin re-encoding it to a bitrate */
   const choices = qualities(file)
 
   let video = $state<HTMLVideoElement>()
-  let bar = $state<HTMLElement>()
-  let hls: Hls | undefined
-  /** hls.js (the full build: the light one fails on Dolby Vision streams' SUPPLEMENTAL-CODECS), fetched while Jellyfin prepares the stream */
-  const hlsJs = nativeHls() ? undefined : import('hls.js')
-  let source = $state.raw<Source | undefined>()
-  /** Jellyfin's id for this playing, for its reports */
-  let session: string | undefined
+  const stream = client
+    ? new Stream(client, film.id, file.Id, () => ({
+        seconds: video?.currentTime ?? time,
+        paused: video?.paused ?? true,
+        audio: audio?.index,
+        subtitles: subtitles?.index,
+      }))
+    : undefined
+  const source = $derived(stream?.source)
 
   const audios = $derived(audioTracks(source ?? file))
   const subs = $derived(subtitleTracks(source ?? file))
@@ -72,15 +73,14 @@
   /** The subtitles last on, for c to bring back */
   let lastSubtitles: Track | undefined
   let cues = $state.raw<Cue[]>([])
+  let quality = $state.raw(pickQuality(choices, watch.quality))
 
   let time = $state(film.start)
-  /** The time captions are drawn at: every frame, not every timeupdate */
-  let now = $state(0)
   let length = $state(film.seconds)
   let buffered = $state(0)
   let paused = $state(true)
   let waiting = $state(true)
-  /** The picture has shown: captions wait for it */
+  /** The picture has shown: subtitles wait for it */
   let shown = $state(false)
   /** A word over the picture for a moment (the track chosen) */
   let note = $state<string | undefined>()
@@ -90,9 +90,10 @@
   let fullscreen = $state(document.fullscreenElement !== null)
   let controls = $state(true)
   let menu = $state(false)
-  let error = $state<string | undefined>()
-  /** Where the pointer is over the seek bar, and where a drag is taking it */
-  let hoverAt = $state<number | undefined>()
+  /** Why it can't play: the stream's say, or the video's */
+  let failed = $state<string | undefined>()
+  const error = $derived(stream?.error ?? failed ?? (client ? undefined : 'Not logged in'))
+  /** Where a drag on the seek bar is taking it */
   let scrubAt = $state<number | undefined>()
   /** A moment's sign in the middle: what a key or click just did */
   let flash = $state<{ icon: string; key: number } | undefined>()
@@ -100,20 +101,12 @@
   /** At an episode's end: the next one, and the seconds before it starts */
   let upNext = $state<{ showing: Showing; count: number } | undefined>()
   let countdown: ReturnType<typeof setInterval> | undefined
-
-  let started = false
-  let reportedAt = 0
-  let stopped = false
   let idleTimer: ReturnType<typeof setTimeout> | undefined
   let flashTimer: ReturnType<typeof setTimeout> | undefined
-  let frame = 0
 
   const at = $derived(scrubAt ?? time)
-  const lines = $derived(shown && subtitles && !subtitles.burnIn ? linesAt(cues, now) : [])
   const fill = $derived(seekFill(colours))
   const sent = $derived(source ? conversion(source) : undefined)
-  let quality = $state.raw(pickQuality(choices, watch.quality))
-  const profile = $derived(deviceProfile(caps, quality))
 
   // the seek bar in the poster's colours, like the music's in the album's
   $effect(() => {
@@ -126,137 +119,25 @@
     }
   })
 
-  // captions follow the picture frame by frame while there are any
-  $effect(() => {
-    if (!cues.length || paused || !video) {
-      now = video?.currentTime ?? time
-      return
-    }
-    const v = video
-    const tick = () => {
-      now = v.currentTime
-      frame = requestAnimationFrame(tick)
-    }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  })
-
-  /** Asks Jellyfin how to play it with the audio (and burned-in subtitles) chosen, and plays from `at` */
+  /** Asks Jellyfin for it with the quality, audio and picture subtitles chosen, and plays from `at` */
   async function load(at: number): Promise<void> {
-    if (!client || !video) return
-    error = undefined
+    if (!stream || !video) return
     waiting = true
-    const before = session
-    try {
-      const info = await client.playbackInfo(film.id, profile, {
-        mediaSourceId: file.Id,
-        audio: audio?.index,
-        subtitles: subtitles?.burnIn ? subtitles.index : undefined,
-      })
-      const s = info.MediaSources[0]
-      if (info.ErrorCode || !s) throw new Error(info.ErrorCode === 'NotAllowed' ? 'Jellyfin doesn’t allow this user to play it' : `Jellyfin can’t stream it here (${info.ErrorCode ?? 'no stream'})`)
-      source = s
-      session = info.PlaySessionId
-    } catch (e) {
-      waiting = false
-      error = e instanceof Error ? e.message : String(e)
-      return
-    }
-    // the stream it replaces (another audio track) is ended on the server
-    if (before) endStream(before)
-    // the subtitles come while the picture starts (once: another audio track keeps them)
-    if (!cues.length) void loadCues(subtitles)
-    const url = source.TranscodingUrl ? client.resolve(source.TranscodingUrl) : client.videoUrl(film.id, source.Id)
-    started = false
-    await attach(url, at, Boolean(source.TranscodingUrl))
+    failed = undefined
+    const ok = await stream.open(video, at, {
+      profile: deviceProfile(caps, quality),
+      audio: audio?.index,
+      burnIn: subtitles?.burnIn ? subtitles.index : undefined,
+    })
+    if (!ok) waiting = false
+    // the subtitles, once (another audio track keeps them)
+    else if (!cues.length) void loadCues(subtitles)
   }
 
-  async function attach(url: string, at: number, isHls: boolean): Promise<void> {
-    const v = video
-    if (!v) return
-    hls?.destroy()
-    hls = undefined
-    if (!isHls || nativeHls()) {
-      v.src = url
-      if (at > 0) v.addEventListener('loadedmetadata', () => (v.currentTime = at), { once: true })
-    } else {
-      const { default: HlsJs } = await (hlsJs ?? import('hls.js'))
-      const h = new HlsJs({
-        startPosition: at,
-        // Jellyfin starts its packager on a seek: the first piece can take a while
-        fragLoadPolicy: {
-          default: {
-            maxTimeToFirstByteMs: 30_000,
-            maxLoadTimeMs: 120_000,
-            timeoutRetry: { maxNumRetry: 4, retryDelayMs: 500, maxRetryDelayMs: 4000 },
-            errorRetry: { maxNumRetry: 6, retryDelayMs: 1000, maxRetryDelayMs: 8000 },
-          },
-        },
-        maxBufferLength: 60,
-        backBufferLength: 90,
-        debug: import.meta.env.DEV && localStorage.getItem('jellyflow.debug') === 'hls',
-      })
-      let recovered = false
-      h.on(HlsJs.Events.ERROR, (_event, data) => {
-        if (!data.fatal) return
-        if (data.type === HlsJs.ErrorTypes.MEDIA_ERROR && !recovered) {
-          recovered = true
-          h.recoverMediaError()
-          return
-        }
-        waiting = false
-        error = `Couldn’t play it: ${data.details}`
-      })
-      h.loadSource(url)
-      h.attachMedia(v)
-      hls = h
-    }
-    void v.play().catch(() => (paused = true))
-  }
-
-  /** Ends a stream Jellyfin is packaging, when it's no longer wanted */
-  function endStream(id: string): void {
-    void client?.endStream(id).catch(() => undefined)
-  }
-
-  function playing(event?: string): Playing {
-    return {
-      ItemId: film.id,
-      MediaSourceId: source?.Id,
-      PlaySessionId: session,
-      PositionTicks: ticks(video?.currentTime ?? time),
-      IsPaused: video?.paused ?? true,
-      CanSeek: true,
-      PlayMethod: source ? playMethod(source) : 'DirectStream',
-      AudioStreamIndex: audio?.index,
-      SubtitleStreamIndex: subtitles?.index ?? -1,
-      ...(event ? { EventName: event } : {}),
-    }
-  }
-
-  function report(event: 'start' | 'progress', name?: string): void {
-    reportedAt = Date.now()
-    void client?.report(event, playing(name)).catch(() => undefined)
-  }
-
-  /** The end of watching: Jellyfin keeps where it was (and ends its stream); the film's or series' page shows it */
+  /** The end of watching: Jellyfin keeps where it was; the film's or series' page shows it */
   function stop(keepalive = false): void {
-    if (stopped || !client) return
-    stopped = true
     clearInterval(countdown)
-    const last = playing()
-    if (started) {
-      void client
-        .report('stopped', last, keepalive)
-        .catch(() => undefined)
-        .then(() => film.stopped?.())
-    } else if (session) endStream(session)
-    hls?.destroy()
-    hls = undefined
-    if (video) {
-      video.removeAttribute('src')
-      video.load()
-    }
+    stream?.stop(video, film.stopped, keepalive)
   }
 
   function close(): void {
@@ -304,9 +185,9 @@
   async function loadCues(t: Track | undefined): Promise<void> {
     cues = []
     if (!t || t.burnIn || !client || !source) return
-    const stream = source.MediaStreams?.find((s) => s.Index === t.index)
+    const s = source.MediaStreams?.find((x) => x.Index === t.index)
     try {
-      const parsed = parseVtt(await client.subtitles(film.id, source.Id, t.index, stream?.DeliveryUrl))
+      const parsed = parseVtt(await client.subtitles(film.id, source.Id, t.index, s?.DeliveryUrl))
       if (subtitles === t) cues = parsed
     } catch {
       say('Couldn’t load those subtitles')
@@ -432,30 +313,6 @@
     }, IDLE)
   }
 
-  // -- the seek bar
-
-  function timeAt(e: PointerEvent): number {
-    const r = bar?.getBoundingClientRect()
-    if (!r || !r.width) return 0
-    return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * length
-  }
-
-  function scrubStart(e: PointerEvent): void {
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    scrubAt = timeAt(e)
-  }
-
-  function scrubMove(e: PointerEvent): void {
-    hoverAt = timeAt(e)
-    if (scrubAt !== undefined) scrubAt = hoverAt
-  }
-
-  function scrubEnd(): void {
-    if (scrubAt === undefined) return
-    seek(scrubAt)
-    scrubAt = undefined
-  }
-
   // -- keys: all of them are the player's while it's open
 
   function onkeydown(e: KeyboardEvent): void {
@@ -544,19 +401,19 @@
 
     document.title = `${film.name} · jellyflow`
     if ('mediaSession' in navigator && client) {
-      const session = navigator.mediaSession
-      session.metadata = new MediaMetadata({
+      const media = navigator.mediaSession
+      media.metadata = new MediaMetadata({
         title: film.name,
         artist: film.from,
         artwork: film.poster.tag ? [{ src: client.posterUrl(film.poster.id, film.poster.tag, 512), sizes: '512x768', type: 'image/jpeg' }] : [],
       })
-      session.setActionHandler('play', () => void video?.play())
-      session.setActionHandler('pause', () => video?.pause())
-      session.setActionHandler('seekbackward', () => skip(-10))
-      session.setActionHandler('seekforward', () => skip(10))
-      session.setActionHandler('seekto', (d) => d.seekTime !== undefined && seek(d.seekTime))
-      session.setActionHandler('nexttrack', film.next ? () => void next(true) : null)
-      session.setActionHandler('previoustrack', null)
+      media.setActionHandler('play', () => void video?.play())
+      media.setActionHandler('pause', () => video?.pause())
+      media.setActionHandler('seekbackward', () => skip(-10))
+      media.setActionHandler('seekforward', () => skip(10))
+      media.setActionHandler('seekto', (d) => d.seekTime !== undefined && seek(d.seekTime))
+      media.setActionHandler('nexttrack', film.next ? () => void next(true) : null)
+      media.setActionHandler('previoustrack', null)
     }
 
     const onFullscreen = () => (fullscreen = document.fullscreenElement !== null && document.fullscreenElement === theatre)
@@ -585,28 +442,25 @@
     for (let i = 0; i < r.length; i++) {
       if (r.start(i) <= v.currentTime + 0.5 && r.end(i) >= v.currentTime) buffered = r.end(i)
     }
-    if (started && !v.paused && Date.now() - reportedAt > REPORT_EVERY) report('progress', 'timeupdate')
+    if (!v.paused) stream?.progress('timeupdate')
   }
 
   function onplaying(): void {
     waiting = false
     shown = true
-    if (!started) {
-      started = true
-      report('start')
-    }
+    stream?.started()
   }
 
   function onpause(): void {
     paused = true
     controls = true
-    if (started) report('progress', 'pause')
+    stream?.progress('pause')
   }
 
   function onplay(): void {
     paused = false
     poke()
-    if (started) report('progress', 'unpause')
+    stream?.progress('unpause')
   }
 </script>
 
@@ -619,7 +473,7 @@
   tabindex="-1"
   aria-label={film.name}
 >
-  <!-- the captions are drawn below, from Jellyfin's subtitles -->
+  <!-- the subtitles are drawn over it (Captions), from Jellyfin's -->
   <!-- svelte-ignore a11y_media_has_caption -->
   <video
     bind:this={video}
@@ -637,18 +491,17 @@
     {onpause}
     {onplay}
     onended={ended}
-    onerror={() => !error && video?.error && (error = `Couldn’t play it (${video.error.message || `error ${video.error.code}`})`)}
+    onerror={() => !error && video?.error && (failed = `Couldn’t play it (${video.error.message || `error ${video.error.code}`})`)}
   ></video>
 
-  {#if lines.length}
-    <div class="captions" class:raised={controls}>
-      {#each lines as line, i (i)}<span>{line}</span>{/each}
-    </div>
+  {#if shown && subtitles && !subtitles.burnIn}
+    <Captions {video} {cues} {paused} raised={controls} />
   {/if}
 
   {#if waiting && !error}<div class="spinner" aria-label="Loading"></div>{/if}
 
   {#if note}<div class="note">{note}</div>{/if}
+
 
   {#if flash}
     {#key flash.key}
@@ -662,20 +515,7 @@
   {/if}
 
   {#if upNext}
-    {@const n = upNext.showing}
-    <div class="upnext" role="status">
-      {#if n.poster.tag && client}
-        <img src={client.posterUrl(n.poster.id, n.poster.tag, 200)} alt="" />
-      {/if}
-      <div class="what">
-        <div class="when">Next episode in {upNext.count}</div>
-        <div class="title">{n.sub}</div>
-        <div class="buttons">
-          <button class="play" onclick={() => upNext && goOn(upNext.showing)}>▶ Play now <kbd>Enter</kbd></button>
-          <button onclick={close}>Back <kbd>Esc</kbd></button>
-        </div>
-      </div>
-    </div>
+    <UpNext next={upNext.showing} count={upNext.count} onplay={() => upNext && goOn(upNext.showing)} onback={close} />
   {/if}
 
   {#if error}
@@ -696,31 +536,7 @@
   </header>
 
   <footer class="bottom">
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="seek"
-      bind:this={bar}
-      onpointerdown={scrubStart}
-      onpointermove={scrubMove}
-      onpointerup={scrubEnd}
-      onpointercancel={() => (scrubAt = undefined)}
-      onpointerleave={() => (hoverAt = undefined)}
-      role="slider"
-      tabindex="-1"
-      aria-label="Seek"
-      aria-valuemin={0}
-      aria-valuemax={Math.round(length)}
-      aria-valuenow={Math.round(at)}
-    >
-      <div class="rail">
-        <div class="buffered" style:width="{(buffered / length) * 100}%"></div>
-        <div class="done" style:width="{(at / length) * 100}%" style:background={fill}></div>
-      </div>
-      <div class="knob" style:left="{(at / length) * 100}%"></div>
-      {#if hoverAt !== undefined}
-        <div class="tip" style:left="{(hoverAt / length) * 100}%">{duration(hoverAt)}</div>
-      {/if}
-    </div>
+    <SeekBar {time} {length} {buffered} {fill} bind:scrubAt onseek={seek} />
 
     <div class="buttons">
       <button class="icon" onclick={toggle} title={paused ? 'Play (k)' : 'Pause (k)'} aria-label={paused ? 'Play' : 'Pause'}>
@@ -781,36 +597,18 @@
   </footer>
 
   {#if menu}
-    <div class="menu">
-      <section>
-        <h4>Quality</h4>
-        {#each choices as q (q.label)}
-          <button class:chosen={q === quality} onclick={() => chooseQuality(q)}>{q.label}</button>
-        {/each}
-      </section>
-      <section>
-        <h4>Audio</h4>
-        {#each audios as t (t.index)}
-          <button class:chosen={t.index === audio?.index} onclick={() => chooseAudio(t)}>{t.label}</button>
-        {/each}
-      </section>
-      <section>
-        <h4>Subtitles</h4>
-        <button class:chosen={!subtitles} onclick={() => chooseSubtitles(undefined)}>Off</button>
-        {#each subs as t (t.index)}
-          <button class:chosen={t.index === subtitles?.index} onclick={() => chooseSubtitles(t)}>{t.label}</button>
-        {/each}
-      </section>
-      {#if sent}
-        <!-- what Jellyfin does to the file for this browser -->
-        <p class="sent">
-          Picture: {sent.video ? `re-encoded${quality.height ? ` to ${quality.label}` : ''}` : 'as in the file'} ·
-          Sound: {sent.audio
-            ? `${audio?.label.split(' · ').pop() ?? 'converted'} → ${sent.audio.toUpperCase()}${sent.audio === 'flac' || sent.audio === 'alac' ? ' (lossless)' : ''}`
-            : 'as in the file'}
-        </p>
-      {/if}
-    </div>
+    <PlayerMenu
+      qualities={choices}
+      {quality}
+      {audios}
+      {audio}
+      subtitles={subs}
+      chosen={subtitles}
+      {sent}
+      onquality={chooseQuality}
+      onaudio={chooseAudio}
+      onsubtitles={chooseSubtitles}
+    />
   {/if}
 </div>
 
@@ -868,65 +666,6 @@
     bottom: 0;
     padding: 40px 18px 10px;
     background: linear-gradient(to top, rgb(0 0 0 / 0.8), rgb(0 0 0 / 0.35) 60%, transparent);
-  }
-  .seek {
-    position: relative;
-    height: 18px;
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    touch-action: none;
-  }
-  .rail {
-    position: relative;
-    width: 100%;
-    height: 4px;
-    border-radius: 2px;
-    background: rgb(255 255 255 / 0.22);
-    overflow: hidden;
-    transition: height 120ms;
-  }
-  .seek:hover .rail {
-    height: 6px;
-  }
-  .buffered,
-  .done {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-  }
-  .buffered {
-    background: rgb(255 255 255 / 0.35);
-  }
-  .done {
-    background: linear-gradient(90deg, var(--accent-2), var(--accent));
-  }
-  .knob {
-    position: absolute;
-    top: 50%;
-    width: 14px;
-    height: 14px;
-    margin: -7px 0 0 -7px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 1px 4px rgb(0 0 0 / 0.6);
-    transform: scale(0);
-    transition: transform 120ms;
-  }
-  .seek:hover .knob {
-    transform: scale(1);
-  }
-  .tip {
-    position: absolute;
-    bottom: 22px;
-    transform: translateX(-50%);
-    padding: 3px 8px;
-    border-radius: 6px;
-    font: 12px var(--mono);
-    background: var(--glass), rgb(20 20 24 / 0.85);
-    box-shadow: var(--glass-edge);
-    pointer-events: none;
   }
   .buttons {
     display: flex;
@@ -996,35 +735,6 @@
   .time span {
     color: var(--text-2);
   }
-  /* -- captions: white on a dark box, like YouTube's; up a little while the controls show */
-  .captions {
-    position: absolute;
-    left: 50%;
-    bottom: 6%;
-    z-index: 1;
-    transform: translateX(-50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    width: max-content;
-    max-width: 86%;
-    text-align: center;
-    transition: bottom 250ms;
-    pointer-events: none;
-  }
-  .captions.raised {
-    bottom: calc(6% + 70px);
-  }
-  .captions span {
-    padding: 1px 8px;
-    font-size: clamp(18px, 2.6vw, 36px);
-    line-height: 1.3;
-    color: #fff;
-    background: rgb(8 8 8 / 0.75);
-    border-radius: 3px;
-    white-space: pre-wrap;
-  }
   /* -- in the middle: loading, and what a key just did */
   .spinner {
     position: absolute;
@@ -1089,64 +799,6 @@
     box-shadow: var(--glass-edge);
     pointer-events: none;
   }
-  /* the next episode, after a countdown: Netflix's corner card, on glass */
-  .upnext {
-    position: absolute;
-    right: 24px;
-    bottom: 110px;
-    z-index: 4;
-    display: flex;
-    gap: 14px;
-    width: min(420px, calc(100% - 48px));
-    padding: 12px;
-    border-radius: 12px;
-    background: var(--glass), rgb(18 18 22 / 0.92);
-    box-shadow: var(--glass-edge);
-  }
-  .upnext img {
-    width: 72px;
-    height: 108px;
-    object-fit: cover;
-    border-radius: 4px;
-    flex: none;
-  }
-  .upnext .what {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-  }
-  .upnext .when {
-    font-size: 13px;
-    color: var(--text-2);
-  }
-  .upnext .title {
-    font-size: 16px;
-    font-weight: 650;
-  }
-  .upnext .buttons {
-    display: flex;
-    gap: 8px;
-    margin-top: auto;
-  }
-  .upnext button {
-    border: 0;
-    border-radius: 999px;
-    padding: 6px 14px;
-    background: rgb(255 255 255 / 0.12);
-    color: var(--text);
-    font-size: 14px;
-  }
-  .upnext button.play {
-    background: var(--text);
-    color: #000;
-    font-weight: 650;
-  }
-  .upnext kbd {
-    font-size: 11px;
-    margin-left: 4px;
-    opacity: 0.7;
-  }
   .error {
     position: absolute;
     left: 50%;
@@ -1167,67 +819,5 @@
     background: var(--text);
     color: #000;
     font-weight: 600;
-  }
-  /* -- the settings: audio and subtitles, on glass above the controls */
-  .menu {
-    position: absolute;
-    right: 18px;
-    bottom: 84px;
-    z-index: 4;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 18px;
-    width: min(860px, calc(100% - 36px));
-    max-height: min(60vh, 520px);
-    padding: 12px;
-    overflow-y: auto;
-    border-radius: 12px;
-    background: var(--glass), rgb(18 18 22 / 0.9);
-    box-shadow: var(--glass-edge);
-    backdrop-filter: blur(12px);
-  }
-  .menu section {
-    flex: 1 1 220px;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  h4 {
-    margin: 2px 8px 6px;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-2);
-  }
-  .menu button {
-    text-align: left;
-    border: 0;
-    border-radius: 6px;
-    padding: 6px 8px 6px 26px;
-    background: none;
-    color: var(--text);
-    position: relative;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .menu button:hover {
-    background: var(--hover);
-  }
-  .menu button.chosen {
-    background: var(--glass);
-    box-shadow: var(--glass-edge);
-    font-weight: 600;
-  }
-  .menu button.chosen::before {
-    content: '✓';
-    position: absolute;
-    left: 9px;
-  }
-  .sent {
-    flex: 1 1 100%;
-    margin: 4px 8px 0;
-    font-size: 12px;
-    color: var(--text-2);
   }
 </style>

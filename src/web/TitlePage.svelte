@@ -206,7 +206,7 @@
   </header>
 
   {#if title.kind === 'movie'}
-    <div class="about" data-page>
+    <div class="about">
       {#if title.tagline}<p class="tagline">{title.tagline}</p>{/if}
       {#if title.overview}<p>{title.overview}</p>{/if}
       <dl class="credits">
@@ -232,7 +232,7 @@
   <!-- the cast: faces in a row, top billing first, scrolled sideways -->
   {#snippet faces()}
     {#if cast.length}
-      <ul class="cast" data-page aria-label="Cast">
+      <ul class="cast" aria-label="Cast">
         {#each cast as person, i (`${person.Id ?? person.Name}${i}`)}
           <li title={person.Role ? `${person.Name} as ${person.Role}` : person.Name}>
             <span class="face">
@@ -273,7 +273,7 @@
         <span class="hint"><kbd>h</kbd> <kbd>l</kbd></span>
       </nav>
     {/if}
-    <ol class="episodes" bind:this={list} data-page>
+    <ol class="episodes" bind:this={list}>
       {#each shown as e, i (e.id)}
         <li class:cursor={cursor === i + 1} class:watched={e.played} class:next={e.id === primary?.episode?.id} data-id={e.id}>
           <button onclick={() => playEpisode(e)}>
