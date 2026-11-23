@@ -20,6 +20,19 @@ with the same keys. A terminal version comes next and shares the same core.
   </tr>
 </table>
 
+![Watch: films and series in rows of posters, each row a Cover Flow; the row you're on takes most of the screen, its name big above it](docs/watch.webp)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/film.webp" width="100%" alt="A film's page beside its poster: what it's about, who made it, its cast, and Resume or Play"></td>
+    <td width="50%"><img src="docs/series.webp" width="100%" alt="A series' page beside its poster: where you're at, its seasons and episodes, its cast"></td>
+  </tr>
+  <tr>
+    <td align="center">A film's page swings out beside its poster</td>
+    <td align="center">A series': where you're at, its episodes, its cast</td>
+  </tr>
+</table>
+
 - **Cover Flow:** a 3D row of covers that glides on a tap and runs ever
   faster while a key is held. `Enter` opens an album like a gatefold sleeve,
   its tracks on the inside page.
