@@ -9,7 +9,7 @@
   import { duration, links } from '../core/details.ts'
   import { folderName, seconds, type Item } from '../core/jellyfin.ts'
   import { Keys, keyName } from '../core/keys.ts'
-  import { toAlbum, toTrack, type Album } from '../core/library.ts'
+  import { fold, toAlbum, toTrack, type Album } from '../core/library.ts'
   import Cover from './Cover.svelte'
   import Details from './Details.svelte'
   import { player } from './player.svelte.ts'
@@ -266,11 +266,11 @@
   /** The next item (from `start`, going `dir`, wrapping) whose name has `query` in it */
   function findFrom(start: number, query: string, dir: 1 | -1): number {
     const n = items.length
-    const q = query.toLowerCase()
+    const q = fold(query)
     for (let k = 0; k < n; k++) {
       const i = (((start + dir * k) % n) + n) % n
       const item = items[i]
-      if (item && label(item).toLowerCase().includes(q)) return i
+      if (item && fold(label(item)).includes(q)) return i
     }
     return -1
   }

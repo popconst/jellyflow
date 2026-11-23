@@ -1,11 +1,14 @@
 // The web app's state: the login, the library's albums and track titles,
-// each album's tracks (fetched once), the status line, and a live connection
-// to Jellyfin that reloads the albums when the library changes.
+// each album's tracks (fetched once), the film and series libraries (their
+// titles are videos.svelte.ts'), the status line, and a live connection to
+// Jellyfin that reads them again when the library changes.
 
 import { Jellyfin, login, SessionExpired, type Device, type Item, type Session } from '../core/jellyfin.ts'
 import { albumsFrom, TrackTitles, type Album } from '../core/library.ts'
 
-export type View = 'flow' | 'folders'
+/** Watch (films and series), or Listen: Cover Flow or Folders */
+export type View = 'watch' | 'flow' | 'folders'
+export type Section = 'watch' | 'listen'
 
 export function stored<T>(key: string): T | undefined {
   try {
@@ -34,14 +37,36 @@ function device(): Device {
 /** After a library change, how long it has to stay quiet before the albums are read again */
 const SETTLE_MS = 1000
 
+/** A fetch done once and kept (dropped if it fails, to be tried again) */
+export function cached<T>(kept: Map<string, Promise<T>>, key: string, fetch: () => Promise<T>): Promise<T> {
+  let promise = kept.get(key)
+  if (!promise) {
+    promise = fetch()
+    promise.catch(() => kept.delete(key))
+    kept.set(key, promise)
+  }
+  return promise
+}
+
+/** Jellyfin's live events the views hear: the library changed (once a burst has settled), items watched (their ids) */
+interface Events {
+  library: []
+  watched: [ids: string[]]
+}
+
 class App {
   readonly device = device()
   session = $state<Session | undefined>(stored('jellyflow.session'))
   client = $derived(this.session ? new Jellyfin(this.session, this.device) : undefined)
-  view = $state<View>(stored('jellyflow.view') ?? 'flow')
+  view = $state<View>(initialView())
+  /** Where Listen goes back to */
+  listenView = $state<'flow' | 'folders'>(stored('jellyflow.listen') ?? 'flow')
+  section = $derived<Section>(this.view === 'watch' ? 'watch' : 'listen')
   help = $state(false)
 
+  /** The music library (it may be missing), and the film and series ones */
   library = $state.raw<Item | undefined>()
+  videoLibraries = $state.raw<Item[]>([])
   albums = $state.raw<Album[]>([])
   titles = new TrackTitles()
   /** Bumped as track titles come in, so searches by track see them */
@@ -56,10 +81,33 @@ class App {
   private items = new Map<string, Promise<Item>>()
   private socket: WebSocket | undefined
   private statusTimer: ReturnType<typeof setTimeout> | undefined
+  private handlers: { [E in keyof Events]: ((...args: Events[E]) => void)[] } = { library: [], watched: [] }
+
+  /** Hears one of Jellyfin's live events */
+  on<E extends keyof Events>(event: E, handler: (...args: Events[E]) => void): void {
+    this.handlers[event].push(handler)
+  }
+
+  /** The sections there are: Watch with a film or series library, Listen with a music one */
+  get sections(): Section[] {
+    const out: Section[] = []
+    if (this.videoLibraries.length) out.push('watch')
+    if (this.library || !this.videoLibraries.length) out.push('listen')
+    return out
+  }
 
   setView(view: View): void {
     this.view = view
     store('jellyflow.view', view)
+    if (view !== 'watch') {
+      this.listenView = view
+      store('jellyflow.listen', view)
+    }
+  }
+
+  /** Watch, or Listen where it was left */
+  setSection(section: Section): void {
+    this.setView(section === 'watch' ? 'watch' : this.listenView)
   }
 
   async login(server: string, user: string, password: string): Promise<void> {
@@ -77,6 +125,7 @@ class App {
     this.session = undefined
     this.socket?.close()
     this.library = undefined
+    this.videoLibraries = []
     this.albums = []
     this.titles = new TrackTitles()
     this.titlesVersion++
@@ -90,8 +139,17 @@ class App {
     if (!client) return
     try {
       this.loading = 'albums'
-      const [library] = await client.musicLibraries()
-      if (!library) throw new Error('This Jellyfin has no music library')
+      const views = await client.libraries()
+      const library = views.find((v) => v.CollectionType === 'music')
+      this.videoLibraries = views.filter((v) => v.CollectionType === 'movies' || v.CollectionType === 'tvshows')
+      if (!library) {
+        this.loading = ''
+        if (!this.videoLibraries.length) throw new Error('This Jellyfin has no music, film or series library')
+        if (this.view !== 'watch') this.setView('watch')
+        this.listen()
+        return
+      }
+      if (!this.videoLibraries.length && this.view === 'watch') this.setView(this.listenView)
       this.library = library
       this.albums = albumsFrom(await client.albums(library.Id))
       this.loading = 'track titles'
@@ -122,24 +180,17 @@ class App {
 
   /** An album's tracks in order, with formats and credits; fetched once */
   albumTracks(albumId: string): Promise<Item[]> {
-    let tracks = this.tracks.get(albumId)
-    if (!tracks) {
-      tracks = this.client?.albumTracks(albumId) ?? Promise.resolve([])
-      tracks.catch(() => this.tracks.delete(albumId))
-      this.tracks.set(albumId, tracks)
-    }
-    return tracks
+    return cached(this.tracks, albumId, () => this.client?.albumTracks(albumId) ?? Promise.resolve([]))
   }
 
-  /** An album with everything Jellyfin knows about it (overview, links); fetched once */
-  albumItem(albumId: string): Promise<Item> {
-    let item = this.items.get(albumId)
-    if (!item) {
-      item = this.client?.item(albumId) ?? Promise.reject(new Error('Not logged in'))
-      item.catch(() => this.items.delete(albumId))
-      this.items.set(albumId, item)
-    }
-    return item
+  /** An album or a film with everything Jellyfin knows about it (overview, links, its streams); fetched once */
+  item(id: string): Promise<Item> {
+    return cached(this.items, id, () => this.client?.item(id) ?? Promise.reject(new Error('Not logged in')))
+  }
+
+  /** Forgets an item read before (a film just watched: where it was stopped has changed) */
+  forget(id: string): void {
+    this.items.delete(id)
   }
 
   /** A message in the status line, gone after a few seconds */
@@ -157,7 +208,10 @@ class App {
     this.say(`Error: ${e instanceof Error ? e.message : String(e)}`)
   }
 
-  /** Jellyfin's live events: LibraryChanged reloads (once a burst has settled); reconnects if dropped */
+  /**
+   * Jellyfin's live events: LibraryChanged reloads (once a burst has settled),
+   * UserDataChanged tells what was watched; reconnects if dropped
+   */
   private listen(): void {
     const client = this.client
     if (!client || this.socket) return
@@ -173,7 +227,14 @@ class App {
       }
       if (message.MessageType === 'LibraryChanged') {
         clearTimeout(settle)
-        settle = setTimeout(() => void this.reload(), SETTLE_MS)
+        settle = setTimeout(() => {
+          void this.reload()
+          for (const handler of this.handlers.library) handler()
+        }, SETTLE_MS)
+      } else if (message.MessageType === 'UserDataChanged') {
+        const list = (message.Data as { UserDataList?: { ItemId?: string }[] } | undefined)?.UserDataList ?? []
+        const ids = list.map((d) => d.ItemId).filter((id): id is string => Boolean(id))
+        for (const handler of this.handlers.watched) handler(ids)
       } else if (message.MessageType === 'ForceKeepAlive' && typeof message.Data === 'number') {
         clearInterval(keepAlive)
         keepAlive = setInterval(() => socket.send(JSON.stringify({ MessageType: 'KeepAlive' })), message.Data * 500)
@@ -186,6 +247,12 @@ class App {
     }
     this.socket = socket
   }
+}
+
+/** Where the app opens: where it was left */
+function initialView(): View {
+  const view = stored<View>('jellyflow.view')
+  return view === 'watch' || view === 'folders' ? view : 'flow'
 }
 
 export const app = new App()

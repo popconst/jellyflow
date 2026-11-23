@@ -5,7 +5,7 @@
 <script lang="ts">
   import { duration } from '../core/details.ts'
   import Cover from './Cover.svelte'
-  import { coverColours, stops } from './palette.ts'
+  import { coverColours, seekFill, stops } from './palette.ts'
   import { player } from './player.svelte.ts'
   import { app } from './state.svelte.ts'
 
@@ -31,9 +31,7 @@
       ? app.client.imageUrl(player.current.albumId, player.current.imageTag, 300)
       : undefined,
   )
-  const fill = $derived(
-    colours.length === 3 ? `linear-gradient(90deg, ${colours[2]}, ${colours[1]}, ${colours[0]})` : undefined,
-  )
+  const fill = $derived(seekFill(colours))
   const done = $derived(player.duration ? (player.time / player.duration) * 100 : 0)
 
   function seek(e: MouseEvent) {

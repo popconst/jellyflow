@@ -8,7 +8,7 @@
 
   const info = $derived(app.albumTracks(album.id).then((tracks) => details(album, tracks)))
   /** What Jellyfin itself knows: the overview and its links (fine without, if it can't say) */
-  const extra = $derived(app.albumItem(album.id).catch(() => undefined))
+  const extra = $derived(app.item(album.id).catch(() => undefined))
   const ours = $derived(links(album))
   /** Jellyfin's links to the album elsewhere, but for the ones above; web pages only (they come from tags) */
   const theirs = (urls: { Name: string; Url: string }[] = []) =>

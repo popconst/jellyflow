@@ -1,44 +1,23 @@
 <!--
-  Cover Flow: the albums in a row, the one in the middle 20% bigger and its
-  neighbours turned towards it. The row moves with core/motion.ts: a tap
-  glides one album; holding a key runs from the keyboard's first repeat,
-  ever faster, and stops on the next album when let go; scrolling follows the
-  trackpad. Modes: browse, search (/), the open album (Enter: it opens like a
-  gatefold sleeve, its tracks on a page that swings out to the right, the
-  spectrum of what's playing on the floor under it) and the details (i).
+  Cover Flow: the albums in a row (Row.svelte). Modes: browse, search (/),
+  the open album (Enter: it opens like a gatefold sleeve, its tracks on a
+  page that swings out to the right, the spectrum of what's playing on the
+  floor under it) and the details (i).
 -->
 <script lang="ts">
-  import { untrack } from 'svelte'
-  import { cubicOut } from 'svelte/easing'
-  import { SvelteSet } from 'svelte/reactivity'
   import { duration, links } from '../core/details.ts'
   import { keyName } from '../core/keys.ts'
   import { filter as find, toTrack, type Album, type Found, type Track } from '../core/library.ts'
-  import { Motion } from '../core/motion.ts'
   import Cover from './Cover.svelte'
   import Details from './Details.svelte'
   import { player } from './player.svelte.ts'
+  import Row, { FOCUS } from './Row.svelte'
   import { app, store, stored, typing } from './state.svelte.ts'
   import TrackList from './TrackList.svelte'
   import Visualizer from './Visualizer.svelte'
 
-  /** The row's geometry, in units of `size`: the first side cover's place, then each next one's */
-  const GAP = 0.8
-  const STEP = 0.13
-  /** How far side covers are turned (degrees) and pushed back */
-  const TURN = 65
-  const DEPTH = 0.25
-  /** The middle cover's scale, and the others' */
-  const FOCUS = 1.2
-  const SIDE = 0.7
-  /** The row's height: a little room, the middle cover, as much of its reflection as shows */
-  const HEIGHT = 0.06 + FOCUS + 0.36
   /** The open album's page: the share of it the spectrum stands in (the tracks above) */
   const SPECTRUM = 0.42
-  /** Covers ahead and behind fetched while the row rests, for a smooth slide */
-  const PREFETCH = 24
-  /** Scrolled pixels per album */
-  const SCROLL_PX = 45
   /** The row follows the search once typing pauses this long */
   const FILTER_MS = 150
 
@@ -64,18 +43,11 @@
   let applied = $state(resume ? '' : (saved?.filter ?? ''))
   let filterTimer: ReturnType<typeof setTimeout> | undefined
   let input = $state<HTMLInputElement>()
-  let stage = $state<HTMLElement>()
-  let box = $state({ w: 1200, h: 700 })
 
-  const motion = new Motion()
+  let row = $state<Row<Album>>()
   /** Where the row is, fractional while it moves */
   let pos = $state(0)
   let settled = $state(true)
-  /** The album the row is at, so it stays there when the row's albums change (and after a reload) */
-  let anchor: string | undefined = resume?.albumId ?? saved?.id
-  let frame = 0
-  let lastFrame = 0
-  let wheelTimer: ReturnType<typeof setTimeout> | undefined
   /** The album opened with Enter, kept while its page folds shut again */
   let opened = $state.raw<{ album: Album; tracks: Track[] } | undefined>()
   /** Where c came from, for o to go back to (and o again to return) */
@@ -85,97 +57,20 @@
     void app.titlesVersion
     return find(app.albums, applied, app.titles)
   })
+  /** The row's albums: the matches */
+  const albums = $derived(found.flatMap((f) => app.albums[f.index] ?? []))
   const last = $derived(Math.max(0, found.length - 1))
   const place = $derived(Math.max(0, Math.min(last, Math.round(pos))))
-  const current = $derived<Found | undefined>(found[place])
-  const album = $derived(current ? app.albums[current.index] : undefined)
+  const album = $derived<Album | undefined>(albums[place])
   const filtered = $derived(applied.trim() !== '')
-
-  /** The unit everything's measured in: as big as the space allows */
-  const size = $derived(Math.max(100, Math.min(box.h / HEIGHT, box.w / 2.7)))
-  /** The floor the covers stand on: their bottom edges, where the reflections start */
-  const floor = $derived((box.h - HEIGHT * size) / 2 + (0.06 + FOCUS) * size)
-  /** Covers drawn on each side: enough to reach the edges */
-  const side = $derived(Math.min(14, Math.ceil((box.w / 2 / size - GAP) / STEP) + 2))
-  const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1
-  /** Covers moving by are fetched small; the one in the middle sharp once the row stops */
-  const thumb = $derived(size * dpr <= 340 ? 300 : 500)
-  const sharp = $derived(Math.min(1200, Math.ceil((size * FOCUS * dpr) / 200) * 200))
-
-  const visible = $derived.by(() => {
-    const from = Math.max(0, Math.floor(pos) - side)
-    const to = Math.min(last, Math.ceil(pos) + side)
-    const out: { album: Album; index: number; offset: number }[] = []
-    for (let i = from; i <= to; i++) {
-      const a = app.albums[found[i]?.index ?? -1]
-      if (a) out.push({ album: a, index: i, offset: i - pos })
-    }
-    return out
-  })
-
-  /**
-   * Where a cover sits at `offset` albums from the middle (fractional while
-   * moving). Sliding out of the middle it folds: it turns to face the middle
-   * (its inner edge going back, like a page of an open book), shrinks to SIDE
-   * and steps back, all continuously; further out it only slides along. The
-   * browser sorts the covers by their real depth, so two covers crossing in
-   * the middle fold through each other instead of swapping places.
-   * Transforms only: the compositor moves them without repainting.
-   */
-  function pose(offset: number) {
-    const s = Math.sign(offset)
-    const n = Math.abs(offset)
-    const t = Math.min(1, n)
-    const x = n <= 1 ? s * GAP * t : s * (GAP + (n - 1) * STEP)
-    const scale = FOCUS + (SIDE - FOCUS) * t
-    return {
-      transform: `translate3d(${(x * size).toFixed(2)}px, 0, ${(-DEPTH * t * size).toFixed(2)}px) rotateY(${(-s * TURN * t).toFixed(2)}deg) scale(${scale.toFixed(4)})`,
-      edge: t,
-      side: s,
-    }
-  }
-
-  /** Sharp covers already loaded, by URL: they stay on while their cover folds away */
-  const sharpReady = new SvelteSet<string>()
-
-  /** The sharp cover over this one, if it's (about to be) in the middle */
-  function crisp(a: Album, index: number, offset: number): string | undefined {
-    if (!a.imageTag || !app.client) return undefined
-    const url = app.client.imageUrl(a.id, a.imageTag, sharp)
-    if (sharpReady.has(url)) return Math.abs(offset) < 1.5 ? url : undefined
-    return settled && index === place ? url : undefined
-  }
-
-  function idAt(index: number): string | undefined {
-    const f = found[index]
-    return f ? app.albums[f.index]?.id : undefined
-  }
 
   /** The album the row is heading to: what keys act on, even mid-glide */
   function chosen(): { album: Album; found: Found } | undefined {
-    const f = found[Math.max(0, Math.min(last, Math.round(motion.target)))]
-    const a = f && app.albums[f.index]
+    const at = row?.target() ?? place
+    const f = found[at]
+    const a = albums[at]
     return a && f ? { album: a, found: f } : undefined
   }
-
-  function animate(now: number): void {
-    const moving = motion.tick(Math.min(0.1, (now - lastFrame) / 1000), found.length)
-    lastFrame = now
-    pos = motion.pos
-    anchor = idAt(place)
-    frame = moving ? requestAnimationFrame(animate) : 0
-    settled = !moving
-  }
-
-  /** Starts the row moving, if it isn't */
-  function kick(): void {
-    settled = false
-    if (frame) return
-    lastFrame = performance.now()
-    frame = requestAnimationFrame(animate)
-  }
-
-  $effect(() => () => cancelAnimationFrame(frame))
 
   // after a reload with something playing: its album opened, once the row has got there
   let opening = resume !== undefined
@@ -189,83 +84,17 @@
   // where the row rests is remembered, for the next visit
   $effect(() => {
     if (!settled) return
-    const id = idAt(place)
+    const id = albums[place]?.id
     if (id) store('jellyflow.flow', { id, filter: applied })
   })
 
-  // while the row rests, fetch the covers around it, so sliding on finds them ready
-  const fetched = new Set<string>()
-  $effect(() => {
-    const client = app.client
-    if (!settled || !client) return
-    for (let i = Math.max(0, place - PREFETCH); i <= Math.min(last, place + PREFETCH); i++) {
-      const a = app.albums[found[i]?.index ?? -1]
-      if (!a?.imageTag) continue
-      const url = client.imageUrl(a.id, a.imageTag, thumb)
-      if (fetched.has(url)) continue
-      fetched.add(url)
-      const img = new Image()
-      img.decoding = 'async'
-      img.src = url
-    }
-    // and the neighbours sharp, so the next step lands on a sharp cover
-    for (const i of [place - 1, place + 1]) {
-      const a = app.albums[found[i]?.index ?? -1]
-      if (!a?.imageTag) continue
-      const url = client.imageUrl(a.id, a.imageTag, sharp)
-      if (fetched.has(url)) continue
-      fetched.add(url)
-      const img = new Image()
-      img.onload = () => sharpReady.add(url)
-      img.src = url
-    }
-  })
-
-  function snap(index: number): void {
-    motion.snap(index)
-    pos = motion.pos
-  }
-
-  // the row's albums changed (a filter, a reload): stay at the same album, or the same place
-  let seen: Found[] | undefined
-  $effect.pre(() => {
-    const f = found
-    untrack(() => {
-      if (f === seen) return
-      seen = f
-      const at = anchor ? f.findIndex((x) => app.albums[x.index]?.id === anchor) : -1
-      if (at >= 0 && at === place) return
-      snap(at >= 0 ? at : Math.min(Math.round(motion.pos), Math.max(0, f.length - 1)))
-    })
-  })
-
-  function select(index: number): void {
-    motion.jump(Math.max(0, Math.min(last, index)))
-    kick()
-  }
-
-  /** h / l: a tap moves one album; the keyboard's repeat starts a run */
-  function press(dir: -1 | 1, repeat: boolean): void {
-    if (repeat) motion.repeat(dir)
-    else motion.press(dir)
-    kick()
-  }
-
-  function onkeyup(e: KeyboardEvent): void {
-    const key = e.key.toLowerCase()
-    if (key === 'h' || key === 'arrowleft' || key === 'arrowup') motion.release(-1)
-    else if (key === 'l' || key === 'arrowright' || key === 'arrowdown') motion.release(1)
-    else return
-    kick()
-  }
 
   /** The row for the query, at album `keep` if it's in it, else the first match (no glide) */
   function applyFilter(keep: string | undefined): void {
     clearTimeout(filterTimer)
     filterTimer = undefined
     applied = query
-    const at = keep ? found.findIndex((f) => app.albums[f.index]?.id === keep) : -1
-    anchor = idAt(at >= 0 ? at : 0)
+    row?.anchorTo(keep && albums.some((a) => a.id === keep) ? keep : albums[0]?.id)
   }
 
   /** While searching: the first match; with the search emptied, the album it started from */
@@ -300,10 +129,10 @@
       } else if (!filtered) query = applied = ''
     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
       pending()
-      press(-1, e.repeat)
+      row?.press(-1, e.repeat, e.code)
     } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
       pending()
-      press(1, e.repeat)
+      row?.press(1, e.repeat, e.code)
     } else return
     e.preventDefault()
   }
@@ -334,15 +163,6 @@
     mode = { kind: 'tracks', tracks, cursor: Math.max(0, cursor) }
   }
 
-  /** The page swinging open from behind the cover, hinged on its right edge; and shut again */
-  function fold(_node: Element) {
-    return {
-      duration: 650,
-      easing: cubicOut,
-      css: (t: number) => `transform: rotateY(${(-180 * (1 - t)).toFixed(2)}deg)`,
-    }
-  }
-
   function playFrom(index: number): void {
     if (mode.kind !== 'tracks') return
     player.play(mode.tracks, index)
@@ -364,8 +184,8 @@
       applyFilter(id)
       return
     }
-    const at = found.findIndex((f) => app.albums[f.index]?.id === id)
-    if (at >= 0) select(at)
+    const at = albums.findIndex((a) => a.id === id)
+    if (at >= 0) row?.select(at)
   }
 
   /** c: the album playing; the filter goes if it isn't among its matches. o comes back here */
@@ -401,33 +221,7 @@
         // the filter goes, staying at the same album
         if (!filtered) return false
         query = ''
-        applyFilter(anchor)
-        break
-      case 'l':
-      case '<Right>':
-        press(1, repeat)
-        break
-      case 'h':
-      case '<Left>':
-        press(-1, repeat)
-        break
-      case 'L':
-      case '<PageDown>':
-        motion.nudge(10)
-        kick()
-        break
-      case 'H':
-      case '<PageUp>':
-        motion.nudge(-10)
-        kick()
-        break
-      case 'g':
-      case '<Home>':
-        select(0)
-        break
-      case 'G':
-      case '<End>':
-        select(last)
+        applyFilter(album?.id)
         break
       case 'i':
         if (!repeat) mode = { kind: 'info' }
@@ -435,7 +229,7 @@
       case '/':
         // the current filter, to refine or replace
         query = applied
-        mode = { kind: 'search', from: anchor, prev: applied }
+        mode = { kind: 'search', from: album?.id, prev: applied }
         break
       case 'c':
         jumpToPlaying()
@@ -503,17 +297,6 @@
       case 'm':
         if (!repeat) openLink(key)
         break
-      // flipping to another album closes the list
-      case 'h':
-      case '<Left>':
-        mode = BROWSE
-        press(-1, repeat)
-        break
-      case 'l':
-      case '<Right>':
-        mode = BROWSE
-        press(1, repeat)
-        break
       default:
         return false
     }
@@ -527,15 +310,6 @@
       case 'i':
       case '<BS>':
         if (!repeat) mode = BROWSE
-        break
-      // the panel follows the row
-      case 'h':
-      case '<Left>':
-        press(-1, repeat)
-        break
-      case 'l':
-      case '<Right>':
-        press(1, repeat)
         break
       case '<Enter>':
       case 'j':
@@ -565,120 +339,85 @@
     if (app.view !== 'flow' || typing(e) || e.defaultPrevented || app.help) return
     const key = keyName(e)
     if (!key) return
-    const handled =
-      mode.kind === 'tracks'
-        ? tracksKey(key, e.repeat, mode)
-        : mode.kind === 'info'
-          ? infoKey(key, e.repeat)
-          : browseKey(key, e.repeat)
+    let handled: boolean
+    if (mode.kind === 'tracks') {
+      handled = tracksKey(key, e.repeat, mode)
+      // the row's keys flip to another album: the list closes
+      if (!handled && row?.key(e)) {
+        mode = BROWSE
+        handled = true
+      }
+    } else {
+      // with the details open, the panel follows the row
+      handled = (mode.kind === 'info' ? infoKey(key, e.repeat) : browseKey(key, e.repeat)) || (row?.key(e) ?? false)
+    }
     if (handled) e.preventDefault()
   }
 
-  function clickCover(index: number): void {
-    if (Math.abs(index - pos) >= 0.5) {
-      if (mode.kind === 'tracks') mode = BROWSE
-      select(index)
-    } else if (mode.kind === 'tracks') mode = BROWSE
-    else void openTracks()
+  /** A click away from the open album (or its details), anywhere but on a cover or the page itself, closes it */
+  function clickAway(e: MouseEvent): void {
+    if (mode.kind !== 'tracks' && mode.kind !== 'info') return
+    if (e.target instanceof Element && e.target.closest('[data-page], .details, button, input, a')) return
+    mode = BROWSE
   }
 
-  // the stage's size sets the covers'; scrolling (wheel or trackpad, either direction) moves the row
-  $effect(() => {
-    const el = stage
-    if (!el) return
-    const resize = new ResizeObserver(([entry]) => {
-      if (entry) box = { w: entry.contentRect.width, h: entry.contentRect.height }
-    })
-    resize.observe(el)
-    const onwheel = (e: WheelEvent) => {
-      // an open album: the page scrolls its tracks, the rest stays still
-      if (mode.kind === 'tracks') {
-        if (!(e.target instanceof Element && e.target.closest('.page'))) e.preventDefault()
-        return
-      }
-      e.preventDefault()
-      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
-      motion.scroll((d * (e.deltaMode === 1 ? 30 : 1)) / SCROLL_PX)
-      clearTimeout(wheelTimer)
-      wheelTimer = setTimeout(() => {
-        motion.settle()
-        kick()
-      }, 140)
-      kick()
-    }
-    el.addEventListener('wheel', onwheel, { passive: false })
-    return () => {
-      resize.disconnect()
-      el.removeEventListener('wheel', onwheel)
-    }
-  })
+  /** A side cover: the row glides to it; the middle one opens, or closes */
+  function clickCover(index: number, middle: boolean): void {
+    if (mode.kind === 'tracks') mode = BROWSE
+    else if (middle) void openTracks()
+    if (!middle) row?.select(index)
+  }
 </script>
 
-<svelte:window {onkeydown} {onkeyup} onblur={() => motion.releaseAll()} />
+<svelte:window {onkeydown} />
 
-<section class="flow" class:open={mode.kind === 'tracks'} class:info={mode.kind === 'info'}>
-  <div class="stage" bind:this={stage}>
-    <!-- the floor glows with what's playing, in its album's colours, under the covers'
-         reflections, whichever album is in the middle (an open album has its own
-         spectrum, on its page, only when it's the one playing) -->
-    {#if mode.kind !== 'tracks' && player.current}
-      <div class="glow" style:height="{Math.max(40, (box.h - floor) * 0.8)}px">
-        <Visualizer albumId={player.current.albumId} tag={player.current.imageTag} reflex={0} />
-      </div>
-    {/if}
-    <div
-      class="row"
-      style:perspective="{size * 3}px"
-      style:perspective-origin="50% {floor - (size * FOCUS) / 2}px"
-      style:transform="translateX({mode.kind === 'tracks' ? (-size * FOCUS) / 2 : 0}px)"
+<!-- the keyboard's way out is Esc; a click away is the mouse's -->
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<section class="flow" class:open={mode.kind === 'tracks'} class:info={mode.kind === 'info'} onclick={clickAway}>
+  <div class="stagebox">
+    <Row
+      bind:this={row}
+      onmove={(p, s) => {
+        pos = p
+        settled = s
+      }}
+      items={albums}
+      start={resume?.albumId ?? saved?.id}
+      active={app.view === 'flow'}
+      open={mode.kind === 'tracks'}
+      url={(a, px) => (a.imageTag && app.client ? app.client.imageUrl(a.id, a.imageTag, px) : undefined)}
+      label={(a) => `${a.title} by ${a.artist}`}
+      onclick={clickCover}
     >
-      {#each visible as { album: a, index, offset } (a.id)}
-        {@const p = pose(offset)}
-        {@const sharpUrl = crisp(a, index, offset)}
-        <button
-          class="cover"
-          class:aside={index !== place}
-          data-side={p.side}
-          style:width="{size}px"
-          style:height="{size}px"
-          style:top="{floor - size}px"
-          style:margin-left="{-size / 2}px"
-          style:transform={p.transform}
-          style:--edge={p.edge}
-          onclick={() => clickCover(index)}
-          aria-label="{a.title} by {a.artist}"
-        >
-          <Cover id={a.id} tag={a.imageTag} size={thumb} title={a.title} lazy={false} />
-          {#if sharpUrl}
-            <img class="sharp" src={sharpUrl} alt="" decoding="async" onload={() => sharpReady.add(sharpUrl)} />
-          {/if}
-          <!-- the reflection on the floor: the cover upside down, fading out -->
-          <div class="reflection" aria-hidden="true">
-            <Cover id={a.id} tag={a.imageTag} size={thumb} lazy={false} />
+      {#snippet art(a, px)}
+        <Cover id={a.id} tag={a.imageTag} size={px} title={a.title} lazy={false} />
+      {/snippet}
+
+      <!-- the floor glows with what's playing, in its album's colours, under the covers'
+           reflections, whichever album is in the middle (an open album has its own
+           spectrum, on its page, only when it's the one playing) -->
+      {#snippet under(g)}
+        {#if mode.kind !== 'tracks' && player.current}
+          <div class="glow" style:height="{Math.max(40, (g.box.h - g.floor) * 0.8)}px">
+            <Visualizer albumId={player.current.albumId} tag={player.current.imageTag} reflex={0} />
           </div>
-        </button>
-      {/each}
+        {/if}
+      {/snippet}
 
       <!-- Enter: the album's page, swung out from behind the cover like a gatefold
            sleeve. Second only to the cover, the spectrum of what's playing stands
            in its lower part, on the same floor as the cover, its reflection on
            the floor below like the cover's; the tracks are above it -->
-      {#if mode.kind === 'tracks' && opened}
-        {@const o = opened}
-        {@const art = o.album.imageTag && app.client ? app.client.imageUrl(o.album.id, o.album.imageTag, thumb) : undefined}
-        {@const pageH = size * FOCUS}
-        {@const barsH = pageH * SPECTRUM}
-        {@const mirrorH = Math.max(0, Math.min(size * 0.3, box.h - floor - 6))}
-        <!-- the spectrum only for the album playing; otherwise the tracks have the page -->
-        {@const live = player.current?.albumId === o.album.id}
-        <div
-          class="page"
-          transition:fold
-          style:left="calc(50% + {(size * FOCUS) / 2}px)"
-          style:top="{floor - size * FOCUS}px"
-          style:width="{size * FOCUS}px"
-          style:height="{size * FOCUS}px"
-        >
+      {#snippet beside(g)}
+        <!-- kept while the page folds shut again -->
+        {#if opened}
+          {@const o = opened}
+          {@const art = o.album.imageTag && app.client ? app.client.imageUrl(o.album.id, o.album.imageTag, g.thumb) : undefined}
+          {@const pageH = g.size * FOCUS}
+          {@const barsH = pageH * SPECTRUM}
+          {@const mirrorH = Math.max(0, Math.min(g.size * 0.3, g.box.h - g.floor - 6))}
+          <!-- the spectrum only for the album playing; otherwise the tracks have the page -->
+          {@const live = player.current?.albumId === o.album.id}
           <div class="sheet">
             {#if art}<img class="page-art" src={art} alt="" />{/if}
             <header>
@@ -688,7 +427,7 @@
                 {o.tracks.length === 1 ? 'track' : 'tracks'} · {duration(o.tracks.reduce((sum, t) => sum + t.seconds, 0))}
               </div>
             </header>
-            <TrackList tracks={o.tracks} cursor={mode.cursor} onplay={playFrom} />
+            <TrackList tracks={o.tracks} cursor={mode.kind === 'tracks' ? mode.cursor : undefined} onplay={playFrom} />
             <div class="stand" style:flex-basis="{live ? barsH : 0}px"></div>
           </div>
           <div
@@ -704,22 +443,24 @@
               active={live}
             />
           </div>
+        {/if}
+      {/snippet}
+
+      {#snippet over(g)}
+        <!-- further out is darker: one still gradient over the row, not a filter per cover -->
+        <div class="vignette"></div>
+        <div class="caption" style:top="{Math.min(g.floor + 16, g.box.h - 110)}px">
+          {#if album}
+            <div class="title">{album.title}</div>
+            <div class="sub">{album.artist || 'Unknown artist'}{album.year ? ` · ${album.year}` : ''}</div>
+          {:else if app.loading}
+            <div class="sub">Loading {app.loading}…</div>
+          {:else if app.albums.length}
+            <div class="sub">No album matches “{applied}”</div>
+          {/if}
         </div>
-      {/if}
-    </div>
-
-    <div class="vignette"></div>
-
-    <div class="caption" style:top="{Math.min(floor + 16, box.h - 110)}px">
-      {#if album}
-        <div class="title">{album.title}</div>
-        <div class="sub">{album.artist || 'Unknown artist'}{album.year ? ` · ${album.year}` : ''}</div>
-      {:else if app.loading}
-        <div class="sub">Loading {app.loading}…</div>
-      {:else if app.albums.length}
-        <div class="sub">No album matches “{applied}”</div>
-      {/if}
-    </div>
+      {/snippet}
+    </Row>
   </div>
 
   {#if mode.kind === 'info' && album}
@@ -758,48 +499,34 @@
     flex-direction: column;
     overflow: hidden;
   }
-  .stage {
+  .stagebox {
     position: relative;
     flex: 1 1 auto;
     min-height: 0;
-    overflow: hidden;
   }
-  .flow.info .stage {
+  .flow.info .stagebox {
     margin-right: var(--panel-w);
   }
-  /* one 3D scene: the covers are sorted by depth, not by a fixed order (no overflow
-     here, or the browser flattens it) */
-  .row {
+  .flow.open .caption {
+    opacity: 0;
+  }
+  .vignette {
     position: absolute;
     inset: 0;
-    transform-style: preserve-3d;
-    transition: transform 650ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    z-index: 1500;
+    pointer-events: none;
+    background: linear-gradient(
+      to right,
+      rgb(0 0 0 / 0.92),
+      rgb(0 0 0 / 0.35) 16%,
+      transparent 30%,
+      transparent 70%,
+      rgb(0 0 0 / 0.35) 84%,
+      rgb(0 0 0 / 0.92)
+    );
   }
-  /* an open album: the others step back into the dark */
-  .cover {
-    transition: opacity 450ms;
-  }
-  .flow.open .cover.aside {
-    opacity: 0.12;
-  }
-  /* the ones on the right are behind the page; their outer edges lean out far
-     enough to poke through it, so they go altogether */
-  .flow.open .cover.aside[data-side='1'] {
-    opacity: 0;
-  }
-  .flow.open .caption,
   .flow.open .vignette {
     opacity: 0;
-  }
-  .page {
-    position: absolute;
-    /* hinged on the cover's right edge; while folded behind it, its back shows nothing.
-       A 3D layer even when open, so it's sorted in front of the covers behind it */
-    transform-origin: 0 50%;
-    transform: rotateY(0deg);
-    will-change: transform;
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
   }
   .sheet {
     position: absolute;
@@ -861,66 +588,6 @@
     position: relative;
     flex: 1;
     min-height: 0;
-  }
-  .cover {
-    position: absolute;
-    left: 50%;
-    padding: 0;
-    border: 0;
-    background: none;
-    /* turned and scaled about the bottom edge: every cover stands on the floor */
-    transform-origin: 50% 100%;
-    will-change: transform;
-  }
-  .reflection {
-    position: absolute;
-    top: calc(100% + 1px);
-    left: 0;
-    width: 100%;
-    height: 100%;
-    transform: scaleY(-1);
-    pointer-events: none;
-    -webkit-mask-image: linear-gradient(to top, rgb(0 0 0 / 0.3), transparent 45%);
-    mask-image: linear-gradient(to top, rgb(0 0 0 / 0.3), transparent 45%);
-  }
-  /* further out is darker: one still gradient over the row, not a filter per cover */
-  .vignette {
-    position: absolute;
-    inset: 0;
-    z-index: 1500;
-    pointer-events: none;
-    background: linear-gradient(
-      to right,
-      rgb(0 0 0 / 0.92),
-      rgb(0 0 0 / 0.35) 16%,
-      transparent 30%,
-      transparent 70%,
-      rgb(0 0 0 / 0.35) 84%,
-      rgb(0 0 0 / 0.92)
-    );
-  }
-  .sharp {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  /* each side cover shaded; how much shows as it leaves the middle (--edge) */
-  .cover::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: var(--edge);
-  }
-  /* the edge turned away (the inner one) is darker */
-  .cover[data-side='-1']::after {
-    background: linear-gradient(to right, transparent 35%, rgb(0 0 0 / 0.5));
-  }
-  .cover[data-side='1']::after {
-    background: linear-gradient(to left, transparent 35%, rgb(0 0 0 / 0.5));
   }
   .caption {
     position: absolute;

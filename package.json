@@ -1,7 +1,7 @@
 {
   "name": "jellyflow",
   "version": "0.1.0",
-  "description": "Flip through a Jellyfin music library by album cover (Cover Flow) or by folder, with vim keys. In the browser now; in the terminal next.",
+  "description": "Flip through a Jellyfin music library by album cover (Cover Flow) or by folder, and films by poster, with vim keys. In the browser now; in the terminal next.",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -24,6 +24,7 @@
     "vite": "^8.3.8"
   },
   "dependencies": {
-    "audiomotion-analyzer": "^4.5.4"
+    "audiomotion-analyzer": "^4.5.4",
+    "hls.js": "^1.7.4"
   }
 }

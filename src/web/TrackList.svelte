@@ -4,6 +4,7 @@
   import type { Track } from '../core/library.ts'
   import { player } from './player.svelte.ts'
   import Playing from './Playing.svelte'
+  import { keepInView } from './scroll.ts'
 
   interface Props {
     tracks: Track[]
@@ -22,12 +23,7 @@
 
   // the cursor's row in view: the list scrolls, nothing around it (it may sit in a 3D scene)
   $effect(() => {
-    if (cursor === undefined || !list) return
-    const row = list.children[cursor]
-    if (!(row instanceof HTMLElement)) return
-    if (row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop
-    else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight)
-      list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight
+    if (cursor !== undefined) keepInView(list, list?.children[cursor])
   })
 </script>
 

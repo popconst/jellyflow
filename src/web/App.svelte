@@ -7,17 +7,26 @@
   import { player } from './player.svelte.ts'
   import PlayerBar from './PlayerBar.svelte'
   import { app, typing } from './state.svelte.ts'
+  import VideoPlayer from './VideoPlayer.svelte'
+  import { videos } from './videos.svelte.ts'
+  import Watch from './Watch.svelte'
+  import { watch } from './watch.svelte.ts'
+
+  /** Around the player: what goes full screen */
+  let theatre = $state<HTMLElement>()
 
   onMount(() => {
     if (app.session) void app.load()
   })
 
-  /** Keys for both views: switching, playing, help */
+  /** Keys for every view: switching, playing, help */
   function onkeydown(e: KeyboardEvent): void {
     if (!app.session || typing(e)) return
     switch (keyName(e)) {
+      // Tab: Watch ⇄ Listen; Shift-Tab: Cover Flow ⇄ Folders
       case '<Tab>':
-        app.setView(app.view === 'flow' ? 'folders' : 'flow')
+        if (e.shiftKey) app.setView(app.view === 'flow' ? 'folders' : 'flow')
+        else if (app.sections.length > 1) app.setSection(app.section === 'watch' ? 'listen' : 'watch')
         break
       case '<Space>':
         player.toggle()
@@ -46,11 +55,20 @@
     if (app.session && (e.target as HTMLElement).closest('button')) e.preventDefault()
   }
 
+  /** "61 films · 20 series" */
+  function watchCount(): string {
+    if (!videos.read) return videos.loading ? 'Loading films and series…' : ''
+    const films = videos.movies.length
+    const series = videos.shows.length
+    return [films ? `${films} ${films === 1 ? 'film' : 'films'}` : '', series ? `${series} series` : ''].filter(Boolean).join(' · ')
+  }
+
   const help: [string, [string, string][]][] = [
     [
       'Everywhere',
       [
-        ['Tab', 'Cover Flow ⇄ Folders'],
+        ['Tab', 'Watch ⇄ Listen'],
+        ['Shift-Tab', 'Cover Flow ⇄ Folders'],
         ['Space', 'play / pause'],
         ['< >', 'previous / next track'],
         ['c', 'go to what’s playing'],
@@ -85,6 +103,40 @@
         ['~', 'the top folder'],
       ],
     ],
+    [
+      'Watch',
+      [
+        ['h l ← →', 'previous / next in the row; hold to speed up (or scroll sideways, or click)'],
+        ['j k ↓ ↑', 'the next row / the one above (or scroll up and down)'],
+        ['H L  g G', '10 back / forward; first / last in the row'],
+        ['Enter', 'open it: its page swings out beside the poster'],
+        ['x u', 'take it off Continue Watching (until it’s watched again); put it back'],
+        ['/', 'find a film or series by title, year or genre; Esc: all the rows again'],
+      ],
+    ],
+    [
+      'A film’s or series’ page',
+      [
+        ['j k', 'down / up: Resume or Play, a series’ episodes; k at the top closes'],
+        ['h l', 'a series’ seasons; on a film’s page, the previous / next film'],
+        ['Enter', 'play it (or resume it, where it was stopped)'],
+        ['Esc q', 'close the page'],
+      ],
+    ],
+    [
+      'Watching',
+      [
+        ['Space k', 'play / pause'],
+        ['j l ← →', '10 s back / ahead; 5 s with the arrows'],
+        ['0 … 9', 'to 0% … 90% of the film'],
+        ['↑ ↓ m', 'volume up / down, mute'],
+        ['c', 'subtitles on / off'],
+        ['a s', 'next audio track; audio and subtitles menu'],
+        ['f', 'full screen'],
+        ['N', 'the next episode (at the end of one it follows by itself; Enter now, Esc back)'],
+        ['Esc q', 'back (where you stopped is kept, in Jellyfin)'],
+      ],
+    ],
   ]
 </script>
 
@@ -96,22 +148,43 @@
   <div class="app">
     <header>
       <span class="logo">jelly<span>flow</span></span>
-      <nav>
-        <button class:on={app.view === 'flow'} onclick={() => app.setView('flow')}>Cover Flow</button>
-        <button class:on={app.view === 'folders'} onclick={() => app.setView('folders')}>Folders</button>
-      </nav>
-      <kbd class="tabhint" title="Tab switches">Tab</kbd>
+      {#if app.sections.length > 1}
+        <nav>
+          <button class:on={app.section === 'watch'} onclick={() => app.setSection('watch')}>Watch</button>
+          <button class:on={app.section === 'listen'} onclick={() => app.setSection('listen')}>Listen</button>
+        </nav>
+        <kbd class="tabhint" title="Tab switches">Tab</kbd>
+      {/if}
+      {#if app.section === 'listen'}
+        <nav class="sub">
+          <button class:on={app.view === 'flow'} onclick={() => app.setView('flow')}>Cover Flow</button>
+          <button class:on={app.view === 'folders'} onclick={() => app.setView('folders')}>Folders</button>
+        </nav>
+        <kbd class="tabhint" title="Shift-Tab switches">⇧Tab</kbd>
+      {/if}
       <span class="status">
-        {#if app.status}{app.status}{:else if app.loading}Loading {app.loading}…{:else}{app.albums.length} albums{/if}
+        {#if app.status}{app.status}{:else if app.section === 'watch'}{watchCount()}{:else if app.loading}Loading {app.loading}…{:else}{app.albums.length} albums{/if}
       </span>
       <button class="user" onclick={() => app.logout()} title="Log out">{app.session.userName} · log out</button>
     </header>
     <main>
+      {#if app.videoLibraries.length}
+        <div class="view" hidden={app.view !== 'watch'}><Watch /></div>
+      {/if}
       <div class="view" hidden={app.view !== 'flow'}><Coverflow /></div>
       <div class="view" hidden={app.view !== 'folders'}><Folders /></div>
     </main>
     <PlayerBar />
   </div>
+
+  {#if watch.showing}
+    <!-- what goes full screen: it stays so from one episode to the next (each is a new player) -->
+    <div class="theatre" bind:this={theatre}>
+      {#key watch.showing}
+        <VideoPlayer showing={watch.showing} {theatre} />
+      {/key}
+    </div>
+  {/if}
 
   {#if app.help}
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -172,6 +245,21 @@
     color: var(--text);
     font-weight: 600;
     box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+  }
+  /* Listen's own two: smaller, quieter than Watch | Listen */
+  nav.sub {
+    padding: 2px;
+    background: rgb(255 255 255 / 0.04);
+  }
+  nav.sub button {
+    padding: 3px 11px;
+    font-size: 12px;
+  }
+  .theatre {
+    position: fixed;
+    inset: 0;
+    z-index: 6000;
+    background: #000;
   }
   .tabhint {
     font-size: 11px;

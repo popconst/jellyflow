@@ -6,6 +6,7 @@
 // From the first play on, the sound goes through a Web Audio graph (straight
 // to the speakers, nothing changed) that the visualiser can listen to.
 
+import type { Jellyfin } from '../core/jellyfin.ts'
 import type { Track } from '../core/library.ts'
 import { app, store, stored } from './state.svelte.ts'
 
@@ -64,15 +65,33 @@ class Player {
       app.say(`Couldn't play ${this.current.title}`)
       this.next()
     })
-    if ('mediaSession' in navigator) {
-      const session = navigator.mediaSession
-      session.setActionHandler('play', () => this.toggle())
-      session.setActionHandler('pause', () => this.toggle())
-      session.setActionHandler('nexttrack', () => this.next())
-      session.setActionHandler('previoustrack', () => this.prev())
-      session.setActionHandler('seekto', (d) => d.seekTime !== undefined && this.seek(d.seekTime))
-    }
+    this.claimMediaKeys()
     this.restore()
+  }
+
+  /** The OS's media keys and now-playing panel are the music's (again, after a film) */
+  claimMediaKeys(): void {
+    if (!('mediaSession' in navigator)) return
+    const session = navigator.mediaSession
+    session.setActionHandler('play', () => this.toggle())
+    session.setActionHandler('pause', () => this.toggle())
+    session.setActionHandler('nexttrack', () => this.next())
+    session.setActionHandler('previoustrack', () => this.prev())
+    session.setActionHandler('seekto', (d) => d.seekTime !== undefined && this.seek(d.seekTime))
+    for (const action of ['seekbackward', 'seekforward'] as const) session.setActionHandler(action, null)
+    const track = this.current
+    const client = app.client
+    if (track && client) this.nowPlaying(track, client)
+    else {
+      session.metadata = null
+      document.title = 'jellyflow'
+    }
+  }
+
+  /** Stops the music where it is (a film is starting): it doesn't play on by itself either */
+  pause(): void {
+    this.release()
+    this.audio.pause()
   }
 
   /** What was playing before the reload, paused where it was */
@@ -238,17 +257,21 @@ class Player {
       this.wire()
       void this.audio.play().catch(() => undefined)
     }
+    this.nowPlaying(track, client)
+  }
+
+  /** The tab's title and the OS's now-playing panel */
+  private nowPlaying(track: Track, client: Jellyfin): void {
     document.title = `${track.title} · ${track.artist}`
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: track.title,
-        artist: track.artist,
-        album: track.album,
-        artwork: track.imageTag
-          ? [{ src: client.imageUrl(track.albumId, track.imageTag, 512), sizes: '512x512', type: 'image/jpeg' }]
-          : [],
-      })
-    }
+    if (!('mediaSession' in navigator)) return
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      artwork: track.imageTag
+        ? [{ src: client.imageUrl(track.albumId, track.imageTag, 512), sizes: '512x512', type: 'image/jpeg' }]
+        : [],
+    })
   }
 }
 
