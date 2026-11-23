@@ -53,6 +53,8 @@
   const PREFETCH = 24
   /** Scrolled pixels per cover */
   const SCROLL_PX = 45
+  /** A glide to a clicked cover has arrived this close (in covers): what it was for can happen */
+  const ARRIVED = 0.08
 
   interface Props {
     items: T[]
@@ -133,6 +135,8 @@
   let anchor: string | undefined = untrack(() => start)
   /** The key holding the row moving (its code), let go of to stop it */
   let held: { code: string; dir: -1 | 1 } | undefined
+  /** A glide to a clicked cover, and what to do once it's there (open it); any other move drops it */
+  let arrival: { index: number; then: () => void } | undefined
   let frame = 0
   let lastFrame = 0
   let wheelTimer: ReturnType<typeof setTimeout> | undefined
@@ -183,6 +187,7 @@
       transform: `translate3d(${(x * width).toFixed(2)}px, 0, ${(-DEPTH * t * size).toFixed(2)}px) rotateY(${(-s * TURN * t).toFixed(2)}deg) scale(${scale.toFixed(4)})`,
       edge: t,
       side: s,
+      scale,
     }
   }
 
@@ -213,6 +218,11 @@
     lastFrame = now
     pos = motion.pos
     anchor = items[place]?.id
+    if (arrival && Math.abs(pos - arrival.index) < ARRIVED) {
+      const { then } = arrival
+      arrival = undefined
+      then()
+    }
     frame = moving ? requestAnimationFrame(animate) : 0
     settled = !moving
   }
@@ -284,15 +294,19 @@
     anchor = id
   }
 
-  /** To `index`, gliding */
-  export function select(index: number): void {
-    motion.jump(Math.max(0, Math.min(last, index)))
+  /** To `index`: flying there (a key), or gliding, more gently (a click), and `then` once there */
+  export function select(index: number, gently = false, then?: () => void): void {
+    const to = Math.max(0, Math.min(last, index))
+    arrival = then && { index: to, then }
+    if (gently) motion.glide(to)
+    else motion.jump(to)
     kick()
   }
 
   /** A tap of the key with `code` moves one cover; its repeat starts a run, until it's let go of */
   export function press(dir: -1 | 1, repeat: boolean, code: string): void {
     held = { code, dir }
+    arrival = undefined
     if (repeat) motion.repeat(dir)
     else motion.press(dir)
     kick()
@@ -300,6 +314,7 @@
 
   /** `n` covers on from where it's heading */
   export function nudge(n: number): void {
+    arrival = undefined
     motion.nudge(n)
     kick()
   }
@@ -369,6 +384,7 @@
       // one row of several: up and down is the view's (to the next row)
       if (sideways && !across) return
       e.preventDefault()
+      arrival = undefined
       const d = across ? e.deltaX : e.deltaY
       motion.scroll((d * (e.deltaMode === 1 ? 30 : 1)) / SCROLL_PX)
       clearTimeout(wheelTimer)
@@ -388,7 +404,7 @@
 
 <svelte:window {onkeyup} {onblur} />
 
-<div class="stage" class:open bind:this={stage} style:--reflection="{reflection * 100}%">
+<div class="stage" class:open class:moving={!settled} bind:this={stage} style:--reflection="{reflection * 100}%">
   {@render under?.(geometry)}
   <div
     class="row"
@@ -409,6 +425,7 @@
         style:margin-left="{-width / 2}px"
         style:transform={p.transform}
         style:--edge={p.edge}
+        style:--scale={p.scale}
         onclick={() => onclick(index, index === place)}
         aria-label={label(item)}
       >
@@ -447,6 +464,8 @@
     position: relative;
     height: 100%;
     overflow: hidden;
+    /* how far a cover under the pointer rises */
+    --lift: calc(12px * var(--unscale, 1));
   }
   /* one 3D scene: the covers are sorted by depth, not by a fixed order (no overflow
      here, or the browser flattens it) */
@@ -454,22 +473,41 @@
     position: absolute;
     inset: 0;
     transform-style: preserve-3d;
+    /* clicks go through it to the covers behind its plane (the side ones are pushed back) */
+    pointer-events: none;
     transition: transform 650ms cubic-bezier(0.22, 0.61, 0.36, 1);
   }
   .cover {
     position: absolute;
     left: 50%;
+    pointer-events: auto;
     padding: 0;
     border: 0;
     background: none;
     /* turned and scaled about the bottom edge: every cover stands on the floor */
     transform-origin: 50% 100%;
     will-change: transform;
-    transition: opacity 450ms;
+    cursor: pointer;
+    transition:
+      opacity 450ms,
+      translate 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
   }
-  /* something open: the others step back into the dark */
+  /* a side cover under the pointer, the row at rest, rises off the floor (its reflection sinking as
+     far, as on a mirror) and is lit a little: a click opens it. --lift is in the stage's pixels: a
+     row the view shows scaled down (--unscale) rises as far on screen */
+  .stage:not(.moving) .cover.aside:hover {
+    translate: 0 calc(-1 * var(--lift));
+  }
+  .stage:not(.moving) .cover.aside:hover .reflection {
+    translate: 0 calc(2 * var(--lift) / var(--scale));
+  }
+  .stage:not(.moving) .cover.aside:hover::after {
+    opacity: calc(var(--edge) * 0.35);
+  }
+  /* the page open: the others step back into the dark, out of reach (a click there is a click away) */
   .open .cover.aside {
     opacity: 0.12;
+    pointer-events: none;
   }
   /* the ones on the right are behind it; their outer edges lean out far
      enough to poke through it, so they go altogether */
@@ -478,6 +516,7 @@
   }
   .page {
     position: absolute;
+    pointer-events: auto;
     /* hinged on the cover's right edge; while folded behind it, its back shows nothing.
        A 3D layer even when open, so it's sorted in front of the covers behind it */
     transform-origin: 0 50%;
@@ -494,6 +533,7 @@
     height: 100%;
     transform: scaleY(-1);
     pointer-events: none;
+    transition: translate 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
     /* fading out by --reflection of the way down */
     -webkit-mask-image: linear-gradient(to top, rgb(0 0 0 / 0.3), transparent var(--reflection, 45%));
     mask-image: linear-gradient(to top, rgb(0 0 0 / 0.3), transparent var(--reflection, 45%));

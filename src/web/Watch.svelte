@@ -112,6 +112,10 @@
     lastFocus = focus
   })
 
+  $effect(() => {
+    app.pageOpen.watch = open
+  })
+
   // where the rows rest is remembered, for the next visit
   $effect(() => {
     if (settled && shelf && shelf.key !== 'search') store('jellyflow.watching', { shelf: shelf.key, at, query: applied })
@@ -217,14 +221,17 @@
     closePage()
   }
 
-  /** A poster clicked, in any row: it opens, its row coming forward and gliding to it; the open title's poster shuts it again */
+  /** A poster clicked, in any row: its row comes forward and glides to it, and it opens once there; the open title's poster shuts it again */
   function clickTile(row: number, index: number, middle: boolean): void {
     const key = shelves[row]?.key
     if (!key) return
-    if (row === focus && middle && mode.kind === 'page') return closePage()
+    if (row === focus && mode.kind === 'page') {
+      closePage()
+      if (middle) return
+    }
     toRow(row)
-    rows[key]?.select(index)
-    openPage()
+    if (middle) openPage()
+    else rows[key]?.select(index, true, openPage)
   }
 
   /** x: off Continue Watching (until it's watched again); u puts it back */
@@ -498,7 +505,7 @@
     </div>
   {/if}
 
-  <div class="line">
+  <div class="line" class:quiet={app.quiet}>
     {#if mode.kind === 'search'}
       <span class="slash">/</span>
       <input
@@ -698,8 +705,13 @@
     color: var(--text-2);
     font-size: 16px;
   }
+  /* faded while the app is quiet (a page open, nothing done for a while) */
+  .line.quiet {
+    opacity: 0;
+  }
   .line {
     position: absolute;
+    transition: opacity 700ms;
     left: 0;
     right: 0;
     bottom: 0;

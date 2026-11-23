@@ -12,6 +12,7 @@
   import { fold, toAlbum, toTrack, type Album } from '../core/library.ts'
   import Cover from './Cover.svelte'
   import Details from './Details.svelte'
+  import Disc from './Disc.svelte'
   import { player } from './player.svelte.ts'
   import Playing from './Playing.svelte'
   import { app, store, stored, typing } from './state.svelte.ts'
@@ -411,9 +412,23 @@
 
 <svelte:window {onkeydown} />
 
-{#snippet thumb(item: Item, size: number)}
+{#snippet thumb(item: Item, size: number, play?: () => void)}
   {#if item.Type === 'Audio'}
-    <span class="num">{#if player.current?.id === item.Id}<Playing />{:else}{item.IndexNumber ?? '·'}{/if}</span>
+    {@const playing = player.current?.id === item.Id}
+    <span class="num">
+      <span class="number">{#if playing}<Playing />{:else}{item.IndexNumber ?? '·'}{/if}</span>
+      <!-- a track's play button, under the pointer: a click plays from it, or pauses (and plays on) the one
+           playing; a click on the row only moves the cursor -->
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <span
+        class="go"
+        onclick={(e) => {
+          e.stopPropagation()
+          if (playing) player.toggle()
+          else play?.()
+        }}><Disc sign={playing && !player.paused ? 'pause' : 'play'} size={22} /></span
+      >
+    </span>
   {:else if item.ImageTags?.['Primary'] || item.Type === 'MusicAlbum'}
     <Cover id={item.Id} tag={item.ImageTags?.['Primary']} {size} title={label(item)} />
   {:else}
@@ -431,9 +446,16 @@
 {/snippet}
 
 {#snippet row(item: Item, active: boolean, onclick: () => void, ondblclick?: () => void)}
+  <!-- a track's play button: the cursor to it, then what a double click does (play from it) -->
+  {@const play = ondblclick
+    ? () => {
+        onclick()
+        ondblclick()
+      }
+    : undefined}
   <li class:cursor={active} class:playing={player.current?.id === item.Id}>
     <button {onclick} {ondblclick}>
-      <span class="thumb">{@render thumb(item, 96)}</span>
+      <span class="thumb">{@render thumb(item, 96, play)}</span>
       <span class="name">{label(item)}</span>
       {#if item.Type === 'Audio'}<span class="meta">{duration(seconds(item.RunTimeTicks))}</span>
       {:else if item.IsFolder}<span class="meta">›</span>{/if}
@@ -614,6 +636,21 @@
     overflow: hidden;
     display: grid;
     place-items: center;
+  }
+  /* the number, and over it the play button, in one place; the button shows under the pointer */
+  .num .number,
+  .num .go {
+    grid-area: 1 / 1;
+  }
+  .num .go {
+    opacity: 0;
+    cursor: pointer;
+  }
+  li:hover .go {
+    opacity: 1;
+  }
+  li:hover .number {
+    opacity: 0;
   }
   .num,
   .folder {

@@ -63,6 +63,10 @@ class App {
   listenView = $state<'flow' | 'folders'>(stored('jellyflow.listen') ?? 'flow')
   section = $derived<Section>(this.view === 'watch' ? 'watch' : 'listen')
   help = $state(false)
+  /** A page open beside the middle cover, by view: an album's in Cover Flow, a title's in Watch */
+  pageOpen = $state({ flow: false, watch: false })
+  /** A page open and nothing done for a while: the header and the player bar are away, the views' lines faded */
+  quiet = $state(false)
 
   /** The music library (it may be missing), and the film and series ones */
   library = $state.raw<Item | undefined>()

@@ -15,6 +15,29 @@
   /** Around the player: what goes full screen */
   let theatre = $state<HTMLElement>()
 
+  /** With a page open, after this long with nothing done, the header and the player bar glide away (ms) */
+  const QUIET_MS = 5000
+  const pageOpen = $derived(app.view === 'flow' ? app.pageOpen.flow : app.view === 'watch' ? app.pageOpen.watch : false)
+  $effect(() => {
+    if (!pageOpen) {
+      app.quiet = false
+      return
+    }
+    const hush = () => (app.quiet = true)
+    let timer = setTimeout(hush, QUIET_MS)
+    const wake = () => {
+      app.quiet = false
+      clearTimeout(timer)
+      timer = setTimeout(hush, QUIET_MS)
+    }
+    const events = ['pointermove', 'pointerdown', 'keydown', 'wheel'] as const
+    for (const event of events) addEventListener(event, wake, { passive: true })
+    return () => {
+      clearTimeout(timer)
+      for (const event of events) removeEventListener(event, wake)
+    }
+  })
+
   onMount(() => {
     if (app.session) void app.load()
   })
@@ -145,7 +168,7 @@
 {#if !app.session}
   <Login />
 {:else}
-  <div class="app">
+  <div class="app" class:quiet={app.quiet}>
     <header>
       <span class="logo">jelly<span>flow</span></span>
       {#if app.sections.length > 1}
@@ -174,7 +197,7 @@
       <div class="view" hidden={app.view !== 'flow'}><Coverflow /></div>
       <div class="view" hidden={app.view !== 'folders'}><Folders /></div>
     </main>
-    <PlayerBar />
+    <div class="bottom"><PlayerBar /></div>
   </div>
 
   {#if watch.showing}
@@ -206,6 +229,7 @@
     height: 100%;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
   /* glassy and quiet, like the album page: the covers are the show */
   header {
@@ -216,6 +240,24 @@
     padding: 0 18px;
     background: linear-gradient(to bottom, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0.015));
     border-bottom: 1px solid rgb(255 255 255 / 0.07);
+  }
+  /* a page open and nothing done for a while: the header and the player bar glide off the edges
+     (the views fade their own lines): nothing but the page and its covers */
+  header,
+  .bottom {
+    transition:
+      transform 700ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      opacity 700ms;
+  }
+  .quiet header {
+    transform: translateY(-100%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .quiet .bottom {
+    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
   }
   .logo {
     font-weight: 800;

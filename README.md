@@ -30,6 +30,9 @@ with the same keys. A terminal version comes next and shares the same core.
   transcoded), with the OS's media keys.
 - **A spectrum** of what's playing, in the colours of the album's cover.
 - **Remembers** what was playing and where you were, across reloads.
+- **Out of the way:** with an album or a title open, the header and the
+  player bar glide away after a few seconds of nothing; any move brings
+  them back.
 - **Watch:** films and series in rows, Netflix style, each row a Cover Flow
   of posters: Continue Watching (`x` takes one off), Movies and Shows newest
   first, then Documentaries, Kids, Action, Comedy, Drama and Thriller (each

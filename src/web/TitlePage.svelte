@@ -10,6 +10,7 @@
   import { filmChoices, seriesChoice, type Choice } from '../core/page.ts'
   import { seasonsOf, upNext, type Episode } from '../core/shows.ts'
   import { facts, left, resumable, runtime, startAt, status, type Title } from '../core/titles.ts'
+  import Disc from './Disc.svelte'
   import Progress from './Progress.svelte'
   import Score from './Score.svelte'
   import { keepInView } from './scroll.ts'
@@ -249,18 +250,19 @@
     {/if}
   {/snippet}
 
-  <ol class="actions">
+  <!-- the player bar's buttons: the first a white disc, the next on glass; the cursor a pane of glass around one -->
+  <div class="actions">
     {#each choices as action, i (action.label)}
-      <li class:cursor={i === cursor}>
-        <button onclick={() => choose(action)}>
-          <span class="mark">{action.again ? '↺' : '▶'}</span>
+      {@const more = [action.episode?.title, action.left ? `${runtime(action.left)} left` : ''].filter(Boolean).join(' · ')}
+      <button class="act" class:first={i === 0} class:cursor={i === cursor} onclick={() => choose(action)}>
+        <Disc sign={action.again && i > 0 ? 'again' : 'play'} size={i === 0 ? 46 : 38} plain={i > 0} />
+        <span class="words">
           <span class="label">{action.label}</span>
-          {#if action.episode}<span class="what">{action.episode.title}</span>{/if}
-          {#if action.left}<span class="left">{runtime(action.left)} left</span>{/if}
-        </button>
-      </li>
+          {#if more}<span class="what">{more}</span>{/if}
+        </span>
+      </button>
     {/each}
-  </ol>
+  </div>
 
   {#if title.kind === 'show'}
     {#if seasons.length > 1}
@@ -280,6 +282,7 @@
                 <img src={app.client.stillUrl(e.id, e.stillTag, 320)} alt="" loading="lazy" decoding="async" />
               {/if}
               {#if resumable(e)}<Progress of={e} />{/if}
+              <span class="go"><Disc size={34} /></span>
             </span>
             <span class="text">
               <span class="title"><b>{e.number ?? '·'}</b> {e.title}</span>
@@ -463,11 +466,52 @@
     overflow: hidden;
   }
   .actions {
-    list-style: none;
-    margin: 8px 0 0;
-    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 20px;
+    margin: 12px 0 2px;
   }
-  .actions button,
+  .act {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    border: 0;
+    border-radius: 999px;
+    padding: 4px 18px 4px 4px;
+    background: none;
+    text-align: left;
+    color: var(--text);
+  }
+  .act:hover {
+    background: var(--hover);
+  }
+  .act.cursor {
+    background: var(--glass);
+    box-shadow: var(--glass-edge);
+  }
+  .words {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .label {
+    font-size: 16px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .first .label {
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .what {
+    font-size: 13px;
+    color: var(--text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .episodes button {
     display: flex;
     align-items: center;
@@ -481,7 +525,6 @@
     font-size: 16px;
     color: var(--text);
   }
-  .actions button:hover,
   .episodes button:hover {
     background: var(--hover);
   }
@@ -489,29 +532,18 @@
     background: var(--glass);
     box-shadow: var(--glass-edge);
   }
-  .actions .cursor button {
-    font-weight: 600;
+  /* an episode's still shows the play button under the pointer */
+  .go {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgb(0 0 0 / 0.3);
+    opacity: 0;
+    transition: opacity 150ms;
   }
-  .mark {
-    width: 1.2em;
-    text-align: center;
-  }
-  .label {
-    white-space: nowrap;
-  }
-  .what {
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    color: var(--text-2);
-    font-weight: 400;
-  }
-  .left {
-    margin-left: auto;
-    white-space: nowrap;
-    font: 13px var(--mono);
-    color: var(--text-2);
+  .episodes button:hover .go {
+    opacity: 1;
   }
   .seasons {
     display: flex;

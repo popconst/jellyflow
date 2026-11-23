@@ -25,6 +25,8 @@ const COAST = 0.08 * SLOW
 const MAX_COAST = 6
 /** The spring's stiffness (rad/s) for taps and jumps: critically damped, so no bounce */
 const OMEGA = 24 / SLOW
+/** A softer spring for a cover clicked: the row glides there, rather than flying */
+const GLIDE = 12 / SLOW
 /** Stopping after a run never takes longer than this stiffness allows */
 const MIN_OMEGA = 10 / SLOW
 /** A jump further than this many albums starts this far away, so it still glides */
@@ -93,6 +95,12 @@ export class Motion {
   nudge(n: number): void {
     this.omega = OMEGA
     this.target = Math.round(this.target) + n
+  }
+
+  /** To `index` at a gentler pace than a jump: a cover clicked */
+  glide(index: number): void {
+    this.jump(index)
+    this.omega = GLIDE
   }
 
   /** To `index`, gliding the last stretch if it's far */

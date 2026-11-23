@@ -81,6 +81,10 @@
     void openTracks()
   })
 
+  $effect(() => {
+    app.pageOpen.flow = mode.kind === 'tracks'
+  })
+
   // where the row rests is remembered, for the next visit
   $effect(() => {
     if (!settled) return
@@ -361,14 +365,14 @@
     mode = BROWSE
   }
 
-  /** A cover clicked: it opens, the row gliding to it; the open album's cover shuts it again */
+  /** A cover clicked: the row glides to it, and it opens once there; the open album's cover shuts it again */
   function clickCover(index: number, middle: boolean): void {
     if (mode.kind === 'tracks') {
       mode = BROWSE
       if (middle) return
     }
-    if (!middle) row?.select(index)
-    void openTracks()
+    if (middle) void openTracks()
+    else row?.select(index, true, () => void openTracks())
   }
 </script>
 
@@ -470,7 +474,7 @@
     <aside class="details"><Details {album} /></aside>
   {/if}
 
-  <div class="line">
+  <div class="line" class:quiet={app.quiet}>
     {#if mode.kind === 'search'}
       <span class="slash">/</span>
       <input
@@ -624,8 +628,13 @@
     z-index: 3000;
   }
   /* the filter and the place in the row, floating over the floor */
+  /* faded while the app is quiet (a page open, nothing done for a while) */
+  .line.quiet {
+    opacity: 0;
+  }
   .line {
     position: absolute;
+    transition: opacity 700ms;
     left: 0;
     right: 0;
     bottom: 0;
