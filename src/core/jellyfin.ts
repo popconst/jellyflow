@@ -45,6 +45,8 @@ export interface MediaStream {
   SampleRate?: number
   Channels?: number
   BitRate?: number
+  Width?: number
+  Height?: number
   /** SDR, HDR10, DOVI, … */
   VideoRangeType?: string
 }

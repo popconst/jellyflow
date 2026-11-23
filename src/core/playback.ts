@@ -32,6 +32,76 @@ const PICTURES = [
 /** As much as Jellyfin takes: never a reason to re-encode */
 const MAX_BITRATE = 400_000_000
 
+/** A picture quality to ask Jellyfin for: the file as it is, or re-encoded to fit a bitrate (for a slow link) */
+export interface Quality {
+  /** Bits per second at most */
+  bitrate: number
+  /** The picture's height at most; none for the file's own */
+  height?: number | undefined
+  label: string
+}
+
+/** The file as it is */
+export const ORIGINAL: Quality = { bitrate: MAX_BITRATE, label: 'Original' }
+
+/** Below this many bits per second, lossless sound (a few Mbps for 5.1) would take too much of the stream: AAC instead */
+const LOSSLESS_FROM = 10_000_000
+
+/** Jellyfin's own player's choices: height, bits per second */
+const LADDER: [number, number][] = [
+  [2160, 120_000_000],
+  [2160, 80_000_000],
+  [1080, 60_000_000],
+  [1080, 40_000_000],
+  [1080, 20_000_000],
+  [1080, 15_000_000],
+  [1080, 10_000_000],
+  [720, 8_000_000],
+  [720, 6_000_000],
+  [720, 4_000_000],
+  [480, 3_000_000],
+  [480, 1_500_000],
+  [480, 720_000],
+  [360, 420_000],
+]
+
+/** "4K", "1080p" */
+function sizeName(height: number): string {
+  return height >= 2160 ? '4K' : `${height}p`
+}
+
+/** "20 Mbps", "1.5 Mbps", "720 kbps" */
+function rateName(bitrate: number): string {
+  return bitrate >= 1_000_000 ? `${bitrate / 1_000_000} Mbps` : `${bitrate / 1000} kbps`
+}
+
+/** The file's picture as qualities name it, by its width (a wide film is less tall): 2160 for 4K, 1080, 720, … */
+function pictureSize(source: MediaSource): number | undefined {
+  const width = source.MediaStreams?.find((s) => s.Type === 'Video')?.Width
+  if (!width) return undefined
+  return width >= 3200 ? 2160 : width >= 1800 ? 1080 : width >= 1200 ? 720 : width >= 800 ? 480 : 360
+}
+
+/** What a file can be watched in: as it is, then Jellyfin's choices from its own size down */
+export function qualities(source: MediaSource): Quality[] {
+  const size = pictureSize(source)
+  return [
+    { ...ORIGINAL, label: size ? `Original · ${sizeName(size)}` : ORIGINAL.label },
+    ...LADDER.filter(([height]) => !size || height <= size).map(([height, bitrate]) => ({
+      height,
+      bitrate,
+      label: `${sizeName(height)} · ${rateName(bitrate)}`,
+    })),
+  ]
+}
+
+/** The quality to start with: the file's own, or the best one within the bitrate chosen last time (on this browser) */
+export function pickQuality(choices: Quality[], bitrate: number | undefined): Quality {
+  const original = choices[0] ?? ORIGINAL
+  if (!bitrate) return original
+  return choices.find((q) => q !== original && q.bitrate <= bitrate) ?? choices.at(-1) ?? original
+}
+
 /** What to convert audio the browser can't play into: lossless if it can be, else AAC */
 export function audioTarget(caps: Caps): string {
   return caps.audio.find((c) => c === 'flac' || c === 'alac') ?? 'aac'
@@ -43,16 +113,21 @@ export function audioTarget(caps: Caps): string {
  * with fragmented MP4: video copied, audio copied where the browser plays
  * it, else converted to the first codec of the list. Text subtitles come as
  * WebVTT for the player to draw; picture ones (Blu-ray PGS, DVD) can only be
- * burned into the picture, which re-encodes it.
+ * burned into the picture, which re-encodes it. A lower `quality` than the
+ * file's has Jellyfin re-encode the picture to fit it (and, at the lowest,
+ * the sound to AAC).
  */
-export function deviceProfile(caps: Caps): DeviceProfile {
+export function deviceProfile(caps: Caps, quality: Quality = ORIGINAL): DeviceProfile {
   const video = caps.video.join(',')
-  const target = audioTarget(caps)
+  const target = quality.bitrate < LOSSLESS_FROM && caps.audio.includes('aac') ? 'aac' : audioTarget(caps)
   const audio = [target, ...caps.audio.filter((c) => c !== target)].join(',')
+  const smaller = quality.height
+    ? [{ Type: 'Video', Codec: video, Conditions: [{ Condition: 'LessThanEqual', Property: 'Height', Value: String(quality.height), IsRequired: false }] }]
+    : []
   return {
     Name: 'jellyflow',
-    MaxStreamingBitrate: MAX_BITRATE,
-    MaxStaticBitrate: MAX_BITRATE,
+    MaxStreamingBitrate: quality.bitrate,
+    MaxStaticBitrate: quality.bitrate,
     DirectPlayProfiles: [{ Type: 'Video', Container: 'mp4,m4v', VideoCodec: video, AudioCodec: caps.audio.join(',') }],
     TranscodingProfiles: [
       {
@@ -76,6 +151,7 @@ export function deviceProfile(caps: Caps): DeviceProfile {
         Codec: 'hevc',
         Conditions: [{ Condition: 'EqualsAny', Property: 'VideoRangeType', Value: PICTURES.join('|'), IsRequired: false }],
       },
+      ...smaller,
     ],
     SubtitleProfiles: [
       { Format: 'vtt', Method: 'External' },

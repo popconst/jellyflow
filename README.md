@@ -102,7 +102,7 @@ A rebuild is a redeploy: the server always serves what's in `dist/`.
 
 | Key | |
 |---|---|
-| `h` `l` / `←` `→` | previous / next album; hold to run, ever faster. Also scroll, or click a side cover |
+| `h` `l` / `←` `→` | previous / next album; hold to run, ever faster. Also scroll. A click on a cover opens it |
 | `H` `L` / PgUp PgDn | 10 back / forward |
 | `g` `G` | first / last |
 | `/` | filter by artist, album, year or track title (words in any order). `Enter` browses the matches, `Esc` cancels, `Ctrl-U` clears |
@@ -126,7 +126,7 @@ A rebuild is a redeploy: the server always serves what's in `dist/`.
 
 | Key | |
 |---|---|
-| `h` `l` / `←` `→` | previous / next in the row; hold to run. Also scroll sideways, or click |
+| `h` `l` / `←` `→` | previous / next in the row; hold to run. Also scroll sideways. A click on a poster opens it |
 | `j` `k` / `↓` `↑` | the next row / the one above. Also scroll up and down |
 | `H` `L` `g` `G` | 10 back / forward; first / last in the row |
 | `Enter` | open it: its row comes forward and a page swings out beside the poster. A film's has what it's about, who made it, its cast and Resume or Play; a series' has where you're at, its seasons (`h` `l`), episodes (`j` `k`) and cast. `Enter` plays; `k` on the first line, `Esc` or a click away folds it shut |
@@ -142,7 +142,7 @@ A rebuild is a redeploy: the server always serves what's in `dist/`.
 | `0` … `9` | to 0% … 90% of the film |
 | `↑` `↓` `m` | volume, mute |
 | `c` | subtitles on / off |
-| `a` / `s` | the next audio track / the audio and subtitles menu |
+| `a` / `s` | the next audio track / the menu: quality, audio, subtitles |
 | `f` | full screen |
 | `N` | the next episode. At the end of one, the next starts after 8 seconds (`Enter` now, `Esc` back) |
 | `Esc` `q` | back to the rows |
@@ -207,8 +207,12 @@ A rebuild is a redeploy: the server always serves what's in `dist/`.
   watching it again brings it back.
 - **Bandwidth:** the picture is sent as it is in the file, so the network
   between the browser and Jellyfin has to carry the film's bitrate (a 4K
-  film's can pass 50 Mbit/s for a while). On a slow link, a film waits
-  to start and can pause to load on busy scenes.
+  film's can pass 50 Mbit/s for a while). On a slow link, choose a lower
+  quality in the menu (`s`): Jellyfin's own choices, from 4K at 120 Mbps
+  down to 360p at 420 kbps, those at or under the film's size. Jellyfin
+  then re-encodes the picture to fit (tone-mapping HDR, if it's set to);
+  under 10 Mbps the sound comes as AAC rather than lossless. The choice
+  is kept on that browser, for the next film.
 
 ## Privacy
 

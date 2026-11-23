@@ -8,6 +8,8 @@ import { player } from './player.svelte.ts'
 import { store, stored } from './state.svelte.ts'
 
 const PREFERENCE = 'jellyflow.watch'
+/** The picture quality chosen last, on this browser (a phone on a slow link keeps its own): bits per second, none for the file's own */
+const QUALITY = 'jellyflow.quality'
 
 /** What the player plays: a film, or an episode of a series */
 export interface Showing {
@@ -73,6 +75,7 @@ class Watch {
   /** What's playing, full window: while it is, the keys and the media keys are the player's */
   showing = $state.raw<Showing | undefined>()
   preference = $state<Preference>(stored<Preference>(PREFERENCE) ?? {})
+  quality = $state<number | undefined>(stored<number>(QUALITY))
 
   /** Plays it; the music stops for it (from one episode to the next, it stays stopped) */
   open(showing: Showing): void {
@@ -90,6 +93,12 @@ class Watch {
   prefer(choice: Preference): void {
     this.preference = { ...this.preference, ...choice }
     store(PREFERENCE, this.preference)
+  }
+
+  /** … and the picture quality, by its bitrate (undefined: the file as it is) */
+  preferQuality(bitrate: number | undefined): void {
+    this.quality = bitrate
+    store(QUALITY, bitrate)
   }
 }
 

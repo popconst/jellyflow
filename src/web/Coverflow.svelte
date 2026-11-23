@@ -361,11 +361,14 @@
     mode = BROWSE
   }
 
-  /** A side cover: the row glides to it; the middle one opens, or closes */
+  /** A cover clicked: it opens, the row gliding to it; the open album's cover shuts it again */
   function clickCover(index: number, middle: boolean): void {
-    if (mode.kind === 'tracks') mode = BROWSE
-    else if (middle) void openTracks()
+    if (mode.kind === 'tracks') {
+      mode = BROWSE
+      if (middle) return
+    }
     if (!middle) row?.select(index)
+    void openTracks()
   }
 </script>
 

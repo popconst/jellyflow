@@ -7,6 +7,8 @@ import {
   audioTracks,
   conversion,
   deviceProfile,
+  pickQuality,
+  qualities,
   pickAudio,
   pickSubtitles,
   playMethod,
@@ -73,6 +75,34 @@ test('profile: video copied, audio copied where it plays, else converted without
   // Safari plays Dolby itself: copied, not converted
   assert.equal(deviceProfile(safari).TranscodingProfiles[0]?.AudioCodec, 'alac,aac,mp3,flac,ac3,eac3')
   assert.equal(audioTarget({ video: ['h264'], audio: ['aac', 'mp3'] }), 'aac')
+})
+
+test('quality: the file as it is, or Jellyfin’s choices from its size down; the last one chosen, within reach', () => {
+  const fourK: MediaSource = { MediaStreams: [{ Type: 'Video', Width: 3840, Height: 1606 }] }
+  const hd: MediaSource = { MediaStreams: [{ Type: 'Video', Width: 1828, Height: 1080 }] }
+  const all = qualities(fourK)
+  assert.deepEqual(
+    all.slice(0, 4).map((q) => q.label),
+    ['Original · 4K', '4K · 120 Mbps', '4K · 80 Mbps', '1080p · 60 Mbps'],
+  )
+  assert.deepEqual(
+    all.slice(-3).map((q) => q.label),
+    ['480p · 1.5 Mbps', '480p · 720 kbps', '360p · 420 kbps'],
+  )
+  const some = qualities(hd)
+  assert.equal(some[1]?.label, '1080p · 60 Mbps')
+  assert.equal(pickQuality(some, undefined), some[0])
+  // 20 Mbps chosen on a 4K film: the same on this one; 80 Mbps: the best this one has under it
+  assert.equal(pickQuality(some, 20_000_000).label, '1080p · 20 Mbps')
+  assert.equal(pickQuality(some, 80_000_000).label, '1080p · 60 Mbps')
+  // asked for: at most that bitrate, at most that height
+  const p = deviceProfile(chrome, pickQuality(some, 8_000_000))
+  assert.equal(p.MaxStreamingBitrate, 8_000_000)
+  assert.deepEqual(p.CodecProfiles[1]?.Conditions[0], { Condition: 'LessThanEqual', Property: 'Height', Value: '720', IsRequired: false })
+  assert.equal(deviceProfile(chrome).CodecProfiles.length, 1)
+  // that low, the sound comes as AAC; from 10 Mbps up, still lossless
+  assert.equal(p.TranscodingProfiles[0]?.AudioCodec.split(',')[0], 'aac')
+  assert.equal(deviceProfile(chrome, pickQuality(some, 10_000_000)).TranscodingProfiles[0]?.AudioCodec.split(',')[0], 'flac')
 })
 
 test('play method: repackaged only, or converted', () => {

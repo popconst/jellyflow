@@ -82,7 +82,7 @@
     [
       'Cover Flow',
       [
-        ['h l ← →', 'previous / next album; hold to speed up (or scroll, or click)'],
+        ['h l ← →', 'previous / next album; hold to speed up (or scroll); a click on a cover opens it'],
         ['H L', '10 back / forward'],
         ['g G', 'first / last'],
         ['/', 'filter by artist, album, year or track; Enter browses, Esc cancels'],
@@ -106,7 +106,7 @@
     [
       'Watch',
       [
-        ['h l ← →', 'previous / next in the row; hold to speed up (or scroll sideways, or click)'],
+        ['h l ← →', 'previous / next in the row; hold to speed up (or scroll sideways); a click on a poster opens it'],
         ['j k ↓ ↑', 'the next row / the one above (or scroll up and down)'],
         ['H L  g G', '10 back / forward; first / last in the row'],
         ['Enter', 'open it: its page swings out beside the poster'],
@@ -131,7 +131,7 @@
         ['0 … 9', 'to 0% … 90% of the film'],
         ['↑ ↓ m', 'volume up / down, mute'],
         ['c', 'subtitles on / off'],
-        ['a s', 'next audio track; audio and subtitles menu'],
+        ['a s', 'next audio track; the quality, audio and subtitles menu'],
         ['f', 'full screen'],
         ['N', 'the next episode (at the end of one it follows by itself; Enter now, Esc back)'],
         ['Esc q', 'back (where you stopped is kept, in Jellyfin)'],

@@ -17,10 +17,13 @@
     audioTracks,
     conversion,
     deviceProfile,
+    pickQuality,
     pickAudio,
     pickSubtitles,
+    qualities,
     playMethod,
     subtitleTracks,
+    type Quality,
     type Track,
   } from '../core/playback.ts'
   import { linesAt, parseVtt, type Cue } from '../core/vtt.ts'
@@ -48,9 +51,10 @@
 
   const client = app.client
   const caps = browserCaps()
-  const profile = deviceProfile(caps)
   /** The file's streams, before Jellyfin has said how it sends them (a new film is a new player) */
   const file: Source = film.item.MediaSources?.[0] ?? {}
+  /** The picture qualities to choose from: the file as it is, or Jellyfin re-encoding it to a bitrate */
+  const choices = qualities(file)
 
   let video = $state<HTMLVideoElement>()
   let bar = $state<HTMLElement>()
@@ -108,6 +112,8 @@
   const lines = $derived(shown && subtitles && !subtitles.burnIn ? linesAt(cues, now) : [])
   const fill = $derived(seekFill(colours))
   const sent = $derived(source ? conversion(source) : undefined)
+  let quality = $state.raw(pickQuality(choices, watch.quality))
+  const profile = $derived(deviceProfile(caps, quality))
 
   // the seek bar in the poster's colours, like the music's in the album's
   $effect(() => {
@@ -316,6 +322,16 @@
     audio = t
     void load(video?.currentTime ?? time)
     say(t.label)
+  }
+
+  /** A picture quality: the stream asked for again, from where it is */
+  function chooseQuality(q: Quality): void {
+    menu = false
+    watch.preferQuality(q === choices[0] ? undefined : q.bitrate)
+    if (q === quality) return
+    quality = q
+    void load(video?.currentTime ?? time)
+    say(q.label)
   }
 
   function chooseSubtitles(t: Track | undefined): void {
@@ -749,7 +765,7 @@
       >
         <svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1z" /></svg>
       </button>
-      <button class="icon" class:on={menu} onclick={() => (menu = !menu)} title="Audio and subtitles (s)" aria-label="Settings">
+      <button class="icon" class:on={menu} onclick={() => (menu = !menu)} title="Quality, audio and subtitles (s)" aria-label="Settings">
         <svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)" /></svg>
       </button>
       {#if document.pictureInPictureEnabled}
@@ -767,6 +783,12 @@
   {#if menu}
     <div class="menu">
       <section>
+        <h4>Quality</h4>
+        {#each choices as q (q.label)}
+          <button class:chosen={q === quality} onclick={() => chooseQuality(q)}>{q.label}</button>
+        {/each}
+      </section>
+      <section>
         <h4>Audio</h4>
         {#each audios as t (t.index)}
           <button class:chosen={t.index === audio?.index} onclick={() => chooseAudio(t)}>{t.label}</button>
@@ -782,7 +804,7 @@
       {#if sent}
         <!-- what Jellyfin does to the file for this browser -->
         <p class="sent">
-          Picture: {sent.video ? 're-encoded' : 'as in the file'} ·
+          Picture: {sent.video ? `re-encoded${quality.height ? ` to ${quality.label}` : ''}` : 'as in the file'} ·
           Sound: {sent.audio
             ? `${audio?.label.split(' · ').pop() ?? 'converted'} → ${sent.audio.toUpperCase()}${sent.audio === 'flac' || sent.audio === 'alac' ? ' (lossless)' : ''}`
             : 'as in the file'}
@@ -1155,7 +1177,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 6px 18px;
-    width: min(620px, calc(100% - 36px));
+    width: min(860px, calc(100% - 36px));
     max-height: min(60vh, 520px);
     padding: 12px;
     overflow-y: auto;
@@ -1165,7 +1187,7 @@
     backdrop-filter: blur(12px);
   }
   .menu section {
-    flex: 1 1 240px;
+    flex: 1 1 220px;
     min-width: 0;
     display: flex;
     flex-direction: column;

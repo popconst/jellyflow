@@ -217,18 +217,14 @@
     closePage()
   }
 
-  /** A poster in another row: that row, at it; in this one, a side poster glides there, the middle one opens (or closes) */
+  /** A poster clicked, in any row: it opens, its row coming forward and gliding to it; the open title's poster shuts it again */
   function clickTile(row: number, index: number, middle: boolean): void {
     const key = shelves[row]?.key
     if (!key) return
-    if (row !== focus) {
-      toRow(row)
-      rows[key]?.select(index)
-    } else if (mode.kind === 'page') {
-      closePage()
-      if (!middle) rows[key]?.select(index)
-    } else if (middle) openPage()
-    else rows[key]?.select(index)
+    if (row === focus && middle && mode.kind === 'page') return closePage()
+    toRow(row)
+    rows[key]?.select(index)
+    openPage()
   }
 
   /** x: off Continue Watching (until it's watched again); u puts it back */
