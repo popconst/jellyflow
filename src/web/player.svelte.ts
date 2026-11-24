@@ -1,14 +1,21 @@
 // Playing: a queue of tracks through one <audio>, with the OS's media keys
-// and now-playing panel (Media Session). The queue, the track and where in it
-// are remembered: after a reload it's all back at the same second, and if it
-// was playing it plays on: at once where the browser allows it (Brave: allow
-// autoplay for the site), else from the first key press or click.
+// and now-playing panel (Media Session). Each track is asked of Jellyfin
+// with what this browser plays: files it plays come as they are, any other
+// (ALAC outside Safari) converted on the fly to FLAC, losing nothing. The
+// queue, the track and where in it are remembered: after a reload it's all
+// back at the same second, and if it was playing it plays on: at once where
+// the browser allows it (Brave: allow autoplay for the site), else from the
+// first key press or click.
 // From the first play on, the sound goes through a Web Audio graph (straight
 // to the speakers, nothing changed) that the visualiser can listen to.
 
+import { streamed } from '../core/details.ts'
 import type { Jellyfin } from '../core/jellyfin.ts'
 import type { Track } from '../core/library.ts'
+import { musicProfile } from '../core/playback.ts'
+import { browserCaps } from './caps.ts'
 import { app, store, stored } from './state.svelte.ts'
+import { Stream } from './stream.svelte.ts'
 
 const SAVED = 'jellyflow.player'
 /** While playing, where it's at is saved this often (ms) */
@@ -25,6 +32,7 @@ interface Saved {
 class Player {
   queue = $state.raw<Track[]>([])
   index = $state(-1)
+  /** Not playing, nor about to as soon as the track's in */
   paused = $state(true)
   time = $state(0)
   duration = $state(0)
@@ -33,9 +41,26 @@ class Player {
   source = $state.raw<AudioNode | undefined>()
   /** After a reload: it was playing, and plays on at the first key press or click (the browser wouldn't start it) */
   waiting = $state(false)
+  /** The track in the <audio>, as Jellyfin sends it */
+  private stream = $state.raw<Stream | undefined>()
+  /**
+   * The track's format as it comes: "FLAC · 16-bit / 44.1 kHz · stereo", or
+   * converted by Jellyfin because this browser doesn't play its file, "ALAC
+   * → FLAC · …"; and a word on that (once Jellyfin has said how it sends it)
+   */
+  quality = $derived.by((): { text: string; hiRes: boolean; note?: string } | undefined => {
+    const source = this.stream?.source
+    if (source) return streamed(source)
+    const t = this.current
+    return t?.quality ? { text: t.quality, hiRes: t.hiRes } : undefined
+  })
 
   private audio = new Audio()
-  /** Where to seek to once the track's loaded: the second it was at before a reload */
+  /** What Jellyfin is told this browser plays */
+  private readonly profile = musicProfile(browserCaps())
+  /** Settles once the track's in the <audio>: true if it can play */
+  private ready = Promise.resolve(false)
+  /** The second to start the track at, until it's loaded: where it was before a reload */
   private resumeAt = 0
   private savedAt = 0
   /** Playing on after a reload, held back until the first key press or click */
@@ -48,10 +73,7 @@ class Player {
       this.time = this.audio.currentTime
       if (Date.now() - this.savedAt > SAVE_EVERY) this.save()
     })
-    this.audio.addEventListener('loadedmetadata', () => {
-      if (this.resumeAt > 0) this.audio.currentTime = this.resumeAt
-      this.resumeAt = 0
-    })
+    this.audio.addEventListener('loadedmetadata', () => (this.resumeAt = 0))
     this.audio.addEventListener('durationchange', () => (this.duration = this.audio.duration || 0))
     this.audio.addEventListener('play', () => (this.paused = false))
     this.audio.addEventListener('pause', () => {
@@ -60,11 +82,6 @@ class Player {
     })
     addEventListener('pagehide', () => this.save())
     this.audio.addEventListener('ended', () => this.next())
-    this.audio.addEventListener('error', () => {
-      if (!this.current) return
-      app.say(`Couldn't play ${this.current.title}`)
-      this.next()
-    })
     this.claimMediaKeys()
     this.restore()
   }
@@ -91,7 +108,7 @@ class Player {
   /** Stops the music where it is (a film is starting): it doesn't play on by itself either */
   pause(): void {
     this.release()
-    this.audio.pause()
+    this.halt()
   }
 
   /** What was playing before the reload, paused where it was */
@@ -123,6 +140,8 @@ class Player {
       await Promise.race([context.resume(), new Promise((r) => setTimeout(r, 300))])
     }
     if (!this.held || (context && context.state !== 'running')) return
+    // the track has to be in first
+    if (!(await this.ready) || !this.held) return
     try {
       await this.audio.play()
       this.release()
@@ -138,18 +157,17 @@ class Player {
    */
   private hold(): void {
     if (this.held) return
-    const go = () => {
+    const first = () => {
       setTimeout(() => {
-        if (this.held !== go) return
+        if (this.held !== first) return
         this.release()
-        this.wire()
-        void this.audio.play().catch(() => undefined)
+        this.go()
       })
     }
-    this.held = go
+    this.held = first
     this.waiting = true
-    addEventListener('keydown', go, true)
-    addEventListener('pointerdown', go, true)
+    addEventListener('keydown', first, true)
+    addEventListener('pointerdown', first, true)
   }
 
   private release(): void {
@@ -163,7 +181,7 @@ class Player {
   private save(): void {
     this.savedAt = Date.now()
     const time = this.audio.src ? this.audio.currentTime : this.time
-    const playing = !this.audio.paused || this.held !== undefined
+    const playing = !this.paused || this.held !== undefined
     store(SAVED, { queue: this.queue, index: this.index, time: this.resumeAt || time, playing } satisfies Saved)
   }
 
@@ -190,11 +208,24 @@ class Player {
       return
     }
     // restored before the login was there: load it now
-    if (!this.audio.src) this.load(track, true)
-    else if (this.audio.paused) {
-      this.wire()
-      void this.audio.play().catch(() => undefined)
-    } else this.audio.pause()
+    if (!this.stream) this.load(track, true)
+    else if (this.paused) this.go()
+    else this.halt()
+  }
+
+  /** Plays, through Web Audio: at once, or as soon as the track's in */
+  private go(): void {
+    this.paused = false
+    this.wire()
+    const ready = this.ready
+    void ready.then((ok) => {
+      if (ok && ready === this.ready && !this.paused) void this.audio.play().catch(() => (this.paused = this.audio.paused))
+    })
+  }
+
+  private halt(): void {
+    this.paused = true
+    this.audio.pause()
   }
 
   /**
@@ -220,7 +251,7 @@ class Player {
   next(): void {
     if (this.index + 1 < this.queue.length) this.start(this.index + 1)
     else {
-      this.audio.pause()
+      this.halt()
       this.index = -1
       document.title = 'jellyflow'
       this.save()
@@ -247,17 +278,24 @@ class Player {
     this.save()
   }
 
-  /** Puts `track` in the player, playing or not; shows it as now playing */
+  /** Puts `track` in the player, as Jellyfin sends it to this browser, playing or not; shows it as now playing */
   private load(track: Track, play: boolean): void {
     const client = app.client
     if (!client) return
+    this.stream?.stop(this.audio)
+    const stream = new Stream(client, track.id, { failed: () => this.failed(stream) })
+    this.stream = stream
     this.audio.preload = play ? 'auto' : 'metadata'
-    this.audio.src = client.streamUrl(track.id)
-    if (play) {
-      this.wire()
-      void this.audio.play().catch(() => undefined)
-    }
+    this.ready = stream.open(this.audio, this.resumeAt, { profile: this.profile })
+    if (play) this.go()
     this.nowPlaying(track, client)
+  }
+
+  /** The track playing (`stream`) can't be played: said so, and on to the next */
+  private failed(stream: Stream): void {
+    if (stream !== this.stream || !this.current) return
+    app.say(`Couldn't play ${this.current.title}`)
+    this.next()
   }
 
   /** The tab's title and the OS's now-playing panel */

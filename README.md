@@ -39,8 +39,9 @@ with the same keys. A terminal version comes next and shares the same core.
 - **Folders:** the library as it is on disk, in columns like ranger or yazi,
   with album art throughout.
 - **Search** by artist, album, year or any track title.
-- **Playback** in the browser, the files streamed as they are (not
-  transcoded), with the OS's media keys.
+- **Playback** in the browser, with the OS's media keys. The files are
+  streamed as they are; Apple Lossless, which only Safari plays, is
+  converted on the fly to FLAC, losing nothing.
 - **A spectrum** of what's playing, in the colours of the album's cover.
 - **Remembers** what was playing and where you were, across reloads.
 - **Out of the way:** with an album or a title open, the header and the
@@ -179,8 +180,10 @@ A rebuild is a redeploy: the server always serves what's in `dist/`.
 - **Folders** are the library's folders as they are on disk. A folder without
   a cover of its own shows up to four covers of the albums under it.
 - **Playing** happens in the browser: a queue, auto-advance, and the OS's
-  media keys and now-playing panel. Tracks are streamed as the files are
-  (FLAC, MP3, …), not transcoded. The sound goes through Web Audio untouched,
+  media keys and now-playing panel. Each track is asked for the way films
+  are, with what the browser plays: files it plays (FLAC, MP3, AAC; ALAC in
+  Safari) come as they are, any other is converted on the fly to FLAC in an
+  HLS stream, losing nothing. The sound goes through Web Audio untouched,
   which the spectrum
   ([audioMotion-analyzer](https://github.com/hvianna/audioMotion-analyzer),
   1/24-octave bands coloured from the cover) listens to.

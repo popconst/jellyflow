@@ -1,18 +1,20 @@
-// Playing films: what to ask Jellyfin for, and the choice of audio and
-// subtitles. The rule is to send the file's own streams untouched wherever
-// the browser plays them, and to convert only what it can't: video never
-// (both kinds of browser play H.264 and HEVC), audio to FLAC or ALAC, which
-// keep exactly what the original track holds (Dolby and DTS tracks are
-// decoded, not compressed again; lossless ones stay lossless).
+// What to ask Jellyfin for, for films and for music, and the choice of a
+// film's audio and subtitles. The rule is to send the file's own streams
+// untouched wherever the browser plays them, and to convert only what it
+// can't: video never (both kinds of browser play H.264 and HEVC), audio to
+// FLAC or ALAC, which keep exactly what the original track holds (Dolby and
+// DTS tracks are decoded, not compressed again; lossless ones stay lossless).
 
 import type { DeviceProfile, MediaSource, MediaStream } from './jellyfin.ts'
 
 /** What the browser plays, as Jellyfin names codecs: found by asking it (canPlayType, MediaSource.isTypeSupported) */
 export interface Caps {
-  /** h264, hevc, av1, vp9 */
+  /** In a stream (HLS, fragmented MP4): h264, hevc, av1, vp9 */
   video: string[]
-  /** aac, mp3, opus, flac, alac, ac3, eac3 */
+  /** … and its sound: aac, mp3, opus, flac, alac, ac3, eac3 */
   audio: string[]
+  /** Music files, as they are: flac, mp3, aac, opus, vorbis; alac in Safari */
+  files: string[]
 }
 
 /** HEVC pictures browsers show right: Dolby Vision only where there's an HDR10 (or SDR, HLG) one under it */
@@ -105,6 +107,49 @@ export function pickQuality(choices: Quality[], bitrate: number | undefined): Qu
 /** What to convert audio the browser can't play into: lossless if it can be, else AAC */
 export function audioTarget(caps: Caps): string {
   return caps.audio.find((c) => c === 'flac' || c === 'alac') ?? 'aac'
+}
+
+/** The containers music files of each codec come in, as Jellyfin names them */
+const MUSIC_FILES: Record<string, string> = {
+  flac: 'flac',
+  mp3: 'mp3',
+  aac: 'm4a,m4b,mp4,aac',
+  alac: 'm4a,m4b,mp4',
+  opus: 'ogg,opus,webm',
+  vorbis: 'ogg,oga,webm',
+}
+
+/**
+ * This browser's profile for music. Files it plays as they are (FLAC, MP3
+ * and AAC everywhere, ALAC in Safari) come as they are; any other (ALAC in
+ * Chrome and Firefox) is converted on the fly into HLS with fragmented MP4,
+ * to FLAC where the browser plays that in a stream, which loses nothing.
+ */
+export function musicProfile(caps: Caps): DeviceProfile {
+  return {
+    Name: 'jellyflow',
+    MaxStreamingBitrate: MAX_BITRATE,
+    MaxStaticBitrate: MAX_BITRATE,
+    DirectPlayProfiles: caps.files.flatMap((codec) => {
+      const containers = MUSIC_FILES[codec]
+      return containers ? [{ Type: 'Audio', Container: containers, AudioCodec: codec }] : []
+    }),
+    TranscodingProfiles: [
+      {
+        Type: 'Audio',
+        Container: 'mp4',
+        Protocol: 'hls',
+        Context: 'Streaming',
+        AudioCodec: audioTarget(caps),
+        MaxAudioChannels: '8',
+        MinSegments: 1,
+        BreakOnNonKeyFrames: true,
+      },
+    ],
+    ContainerProfiles: [],
+    CodecProfiles: [],
+    SubtitleProfiles: [],
+  }
 }
 
 /**

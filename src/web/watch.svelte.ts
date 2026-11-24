@@ -1,9 +1,8 @@
 // Watching: what's open in the player (a film or an episode) and from where,
-// the audio and subtitle languages chosen last (for the next one), and what
-// this browser plays, for Jellyfin to send it untouched wherever it can.
+// and the audio and subtitle languages chosen last (for the next one).
 
 import type { Item } from '../core/jellyfin.ts'
-import type { Caps, Preference } from '../core/playback.ts'
+import type { Preference } from '../core/playback.ts'
 import { player } from './player.svelte.ts'
 import { store, stored } from './state.svelte.ts'
 
@@ -33,42 +32,6 @@ export interface Showing {
   next?: (() => Promise<Showing | undefined>) | undefined
   /** Watching it ended: Jellyfin now has where it stopped */
   stopped?: (() => void) | undefined
-}
-
-/** Safari (macOS, iOS) plays HLS itself, and better than a script can there: lock screen, AirPlay, Dolby */
-export function nativeHls(): boolean {
-  return navigator.vendor.startsWith('Apple') && document.createElement('video').canPlayType('application/vnd.apple.mpegurl') !== ''
-}
-
-/**
- * What this browser plays, by Jellyfin's codec names. Asked of Media Source
- * Extensions where hls.js will play the stream, of the <video> where Safari
- * plays it itself: the two can differ.
- */
-export function browserCaps(): Caps {
-  const video = document.createElement('video')
-  const native = nativeHls()
-  const Source = (globalThis as { ManagedMediaSource?: typeof MediaSource }).ManagedMediaSource ?? globalThis.MediaSource
-  const plays = (type: string) => (native ? video.canPlayType(type) !== '' : (Source?.isTypeSupported(type) ?? false))
-  const check = (codecs: Record<string, string>) => Object.keys(codecs).filter((c) => plays(codecs[c] ?? ''))
-  return {
-    video: check({
-      h264: 'video/mp4; codecs="avc1.640028"',
-      // Main 10: what films come in
-      hevc: 'video/mp4; codecs="hvc1.2.4.L153.B0"',
-      av1: 'video/mp4; codecs="av01.0.08M.10"',
-      vp9: 'video/mp4; codecs="vp09.02.10.10"',
-    }),
-    audio: check({
-      aac: 'audio/mp4; codecs="mp4a.40.2"',
-      mp3: 'audio/mp4; codecs="mp4a.6B"',
-      opus: 'audio/mp4; codecs="opus"',
-      flac: 'audio/mp4; codecs="flac"',
-      alac: 'audio/mp4; codecs="alac"',
-      ac3: 'audio/mp4; codecs="ac-3"',
-      eac3: 'audio/mp4; codecs="ec-3"',
-    }),
-  }
 }
 
 class Watch {
