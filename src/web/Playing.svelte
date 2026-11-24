@@ -1,10 +1,10 @@
 <!--
-  The mark of the track playing in a list: four bars in its album's colours,
-  like the spectrum's, that move with its sound (bass to treble); paused,
-  two of them stand still, a pause sign.
+  The mark of the track playing in a list: twelve slim bars in its album's
+  colours, like the spectrum's, that move with its sound (bass to treble);
+  paused, two of them stand still, a pause sign.
 -->
 <script lang="ts">
-  import { levels, tap } from './levels.ts'
+  import { BAND_COUNT, levels, tap } from './levels.ts'
   import { coverColours, stops } from './palette.ts'
   import { player } from './player.svelte.ts'
 
@@ -25,7 +25,7 @@
   })
 
   // the bars follow the sound, frame by frame, while it plays
-  let heights = $state([LOW, LOW, LOW, LOW])
+  let heights = $state(Array<number>(BAND_COUNT).fill(LOW))
   $effect(() => {
     const source = player.source
     if (!source || player.paused) return
@@ -58,19 +58,19 @@
   .bars {
     display: inline-flex;
     align-items: flex-end;
-    gap: 2px;
+    gap: 1px;
     height: 13px;
     vertical-align: -1px;
   }
   i {
-    width: 3px;
+    width: 2px;
     height: 100%;
     border-radius: 1px;
     background: var(--fill);
     transform-origin: 50% 100%;
     filter: drop-shadow(0 0 3px rgb(255 255 255 / 0.25));
   }
-  /* paused: ❚❚, as wide as the four bars */
+  /* paused: ❚❚ */
   .paused {
     gap: 4px;
   }

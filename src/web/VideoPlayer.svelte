@@ -23,6 +23,7 @@
     type Track,
   } from '../core/playback.ts'
   import { parseVtt, type Cue } from '../core/vtt.ts'
+  import { browserCaps } from './caps.ts'
   import Captions from './Captions.svelte'
   import { coverColours, seekFill, stops } from './palette.ts'
   import PlayerMenu from './PlayerMenu.svelte'
@@ -30,7 +31,7 @@
   import { app, store, stored } from './state.svelte.ts'
   import { Stream } from './stream.svelte.ts'
   import UpNext from './UpNext.svelte'
-  import { browserCaps, watch, type Showing } from './watch.svelte.ts'
+  import { watch, type Showing } from './watch.svelte.ts'
 
   interface Props {
     /** The film or episode, with its streams, and the second to start at */
@@ -57,12 +58,15 @@
 
   let video = $state<HTMLVideoElement>()
   const stream = client
-    ? new Stream(client, film.id, file.Id, () => ({
-        seconds: video?.currentTime ?? time,
-        paused: video?.paused ?? true,
-        audio: audio?.index,
-        subtitles: subtitles?.index,
-      }))
+    ? new Stream(client, film.id, {
+        mediaSourceId: file.Id,
+        where: () => ({
+          seconds: video?.currentTime ?? time,
+          paused: video?.paused ?? true,
+          audio: audio?.index,
+          subtitles: subtitles?.index,
+        }),
+      })
     : undefined
   const source = $derived(stream?.source)
 
@@ -90,9 +94,8 @@
   let fullscreen = $state(document.fullscreenElement !== null)
   let controls = $state(true)
   let menu = $state(false)
-  /** Why it can't play: the stream's say, or the video's */
-  let failed = $state<string | undefined>()
-  const error = $derived(stream?.error ?? failed ?? (client ? undefined : 'Not logged in'))
+  /** Why it can't play */
+  const error = $derived(stream?.error ?? (client ? undefined : 'Not logged in'))
   /** Where a drag on the seek bar is taking it */
   let scrubAt = $state<number | undefined>()
   /** A moment's sign in the middle: what a key or click just did */
@@ -123,15 +126,18 @@
   async function load(at: number): Promise<void> {
     if (!stream || !video) return
     waiting = true
-    failed = undefined
     const ok = await stream.open(video, at, {
       profile: deviceProfile(caps, quality),
       audio: audio?.index,
       burnIn: subtitles?.burnIn ? subtitles.index : undefined,
     })
-    if (!ok) waiting = false
+    if (!ok) {
+      waiting = false
+      return
+    }
+    void video?.play().catch(() => undefined)
     // the subtitles, once (another audio track keeps them)
-    else if (!cues.length) void loadCues(subtitles)
+    if (!cues.length) void loadCues(subtitles)
   }
 
   /** The end of watching: Jellyfin keeps where it was; the film's or series' page shows it */
@@ -491,7 +497,6 @@
     {onpause}
     {onplay}
     onended={ended}
-    onerror={() => !error && video?.error && (failed = `Couldn’t play it (${video.error.message || `error ${video.error.code}`})`)}
   ></video>
 
   {#if shown && subtitles && !subtitles.burnIn}

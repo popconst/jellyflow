@@ -89,7 +89,7 @@ export interface DeviceProfile {
     Container: string
     Protocol: string
     Context: string
-    VideoCodec: string
+    VideoCodec?: string
     AudioCodec: string
     MaxAudioChannels?: string
     MinSegments?: number
@@ -456,9 +456,9 @@ export class Jellyfin {
     })
   }
 
-  /** A video file as it is, for a browser that plays it (no repackaging) */
-  videoUrl(itemId: string, mediaSourceId: string | undefined): string {
-    return this.url(`/Videos/${itemId}/stream`, { static: true, mediaSourceId, deviceId: this.device.id })
+  /** A film's or a track's file as it is, for a browser that plays it (nothing converted or repackaged) */
+  fileUrl(media: 'Videos' | 'Audio', itemId: string, mediaSourceId: string | undefined): string {
+    return this.url(`/${media}/${itemId}/stream`, { static: true, mediaSourceId, deviceId: this.device.id })
   }
 
   /** Text subtitles as WebVTT: from where PlaybackInfo said (`deliveryUrl`), else the stream's usual place */
@@ -476,11 +476,6 @@ export class Jellyfin {
   async report(event: 'start' | 'progress' | 'stopped', playing: Playing, keepalive = false): Promise<void> {
     const path = { start: '/Sessions/Playing', progress: '/Sessions/Playing/Progress', stopped: '/Sessions/Playing/Stopped' }[event]
     await this.request('POST', path, {}, playing, keepalive)
-  }
-
-  /** The track's file as it is (FLAC, MP3, …): every browser plays those */
-  streamUrl(trackId: string): string {
-    return this.url(`/Audio/${trackId}/stream`, { static: true, deviceId: this.device.id })
   }
 
   /** Jellyfin's live events: LibraryChanged and the like. The token both ways: newer servers read ApiKey, older api_key */

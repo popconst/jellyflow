@@ -7,6 +7,7 @@ import {
   audioTracks,
   conversion,
   deviceProfile,
+  musicProfile,
   pickQuality,
   qualities,
   pickAudio,
@@ -54,8 +55,8 @@ test('films: searchable by title, year and genre, with where they were stopped',
   assert.equal(movies[2]!.sortTitle, 'Cars')
 })
 
-const chrome: Caps = { video: ['h264', 'hevc'], audio: ['aac', 'mp3', 'opus', 'flac'] }
-const safari: Caps = { video: ['h264', 'hevc'], audio: ['aac', 'mp3', 'alac', 'flac', 'ac3', 'eac3'] }
+const chrome: Caps = { video: ['h264', 'hevc'], audio: ['aac', 'mp3', 'opus', 'flac'], files: ['flac', 'mp3', 'aac', 'opus', 'vorbis'] }
+const safari: Caps = { video: ['h264', 'hevc'], audio: ['aac', 'mp3', 'alac', 'flac', 'ac3', 'eac3'], files: ['flac', 'mp3', 'aac', 'alac'] }
 
 test('profile: video copied, audio copied where it plays, else converted without loss', () => {
   const p = deviceProfile(chrome)
@@ -74,7 +75,25 @@ test('profile: video copied, audio copied where it plays, else converted without
   assert.ok(ranges.includes('DOVIWithHDR10Plus') && ranges.includes('SDR') && !ranges.includes('DOVI'))
   // Safari plays Dolby itself: copied, not converted
   assert.equal(deviceProfile(safari).TranscodingProfiles[0]?.AudioCodec, 'alac,aac,mp3,flac,ac3,eac3')
-  assert.equal(audioTarget({ video: ['h264'], audio: ['aac', 'mp3'] }), 'aac')
+  assert.equal(audioTarget({ video: ['h264'], audio: ['aac', 'mp3'], files: [] }), 'aac')
+})
+
+test('music profile: files the browser plays as they are, the rest converted to FLAC (AAC where a stream can’t carry it)', () => {
+  // Chrome: no ALAC file, so ALAC comes converted
+  const p = musicProfile(chrome)
+  assert.deepEqual(
+    p.DirectPlayProfiles.map((d) => `${d.AudioCodec} in ${d.Container}`),
+    ['flac in flac', 'mp3 in mp3', 'aac in m4a,m4b,mp4,aac', 'opus in ogg,opus,webm', 'vorbis in ogg,oga,webm'],
+  )
+  assert.ok(p.DirectPlayProfiles.every((d) => d.Type === 'Audio'))
+  const hls = p.TranscodingProfiles[0]!
+  assert.equal(hls.Type, 'Audio')
+  assert.equal(`${hls.Protocol} ${hls.Container} ${hls.AudioCodec}`, 'hls mp4 flac')
+  assert.equal(hls.VideoCodec, undefined)
+  // Safari plays ALAC files as they are
+  assert.ok(musicProfile(safari).DirectPlayProfiles.some((d) => d.AudioCodec === 'alac' && d.Container.includes('m4a')))
+  // a stream without lossless sound: AAC
+  assert.equal(musicProfile({ video: [], audio: ['aac', 'mp3'], files: ['mp3'] }).TranscodingProfiles[0]?.AudioCodec, 'aac')
 })
 
 test('quality: the file as it is, or Jellyfin’s choices from its size down; the last one chosen, within reach', () => {

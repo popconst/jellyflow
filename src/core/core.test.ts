@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { details, duration, khz, links, quality } from './details.ts'
-import type { Item } from './jellyfin.ts'
+import { details, duration, khz, links, quality, streamed } from './details.ts'
+import type { Item, MediaSource } from './jellyfin.ts'
 import { compareNames, folderName, VERSION } from './jellyfin.ts'
 import { Keys } from './keys.ts'
 import { albumsFrom, filter, TrackTitles } from './library.ts'
@@ -73,6 +73,20 @@ test('details: quality lines, years, links', () => {
   })
   assert.deepEqual(quality(track('flac', 24, 96000)), { text: 'FLAC · 24-bit / 96 kHz · stereo', hiRes: true })
   assert.deepEqual(quality(track('mp3', 16, 44100)), { text: 'MP3 · 44.1 kHz · stereo', hiRes: false })
+  // as Jellyfin sends it: the file as it is, or converted on the fly, from what to what
+  const alac: MediaSource = { Container: 'mov,mp4,m4a,3gp,3g2,mj2', MediaStreams: [{ Type: 'Audio', Codec: 'alac', BitDepth: 24, SampleRate: 96000, Channels: 2 }] }
+  const to = (codec: string): MediaSource => ({ ...alac, TranscodingUrl: `/audio/a/master.m3u8?AudioCodec=${codec}&SegmentContainer=mp4&TranscodeReasons=AudioCodecNotSupported` })
+  assert.deepEqual(streamed(alac), { text: 'ALAC · 24-bit / 96 kHz · stereo', hiRes: true, note: 'Streamed as the file is, not transcoded' })
+  assert.deepEqual(streamed(to('flac')), {
+    text: 'ALAC → FLAC · 24-bit / 96 kHz · stereo',
+    hiRes: true,
+    note: 'Converted on the fly from ALAC to FLAC, losing nothing: this browser doesn’t play ALAC',
+  })
+  assert.deepEqual(streamed(to('aac')), {
+    text: 'ALAC → AAC · 24-bit / 96 kHz · stereo',
+    hiRes: false,
+    note: 'Converted on the fly from ALAC to AAC: this browser doesn’t play ALAC',
+  })
   assert.equal(khz(22050), '22.05 kHz')
   const [kill] = albumsFrom(library)
   assert.ok(kill)

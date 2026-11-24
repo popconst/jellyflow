@@ -1,9 +1,11 @@
 // An album at a glance, from Jellyfin's album and its tracks: artists, years,
 // label, genres, length, audio quality, credits, MusicBrainz id, folder; and
-// the Discogs / Wikipedia / MusicBrainz links (coverflow's `i` panel).
+// the Discogs / Wikipedia / MusicBrainz links (coverflow's `i` panel). And a
+// track's format as it comes to the browser, for the player bar.
 
-import { seconds, type Item, type MediaStream } from './jellyfin.ts'
+import { seconds, type Item, type MediaSource, type MediaStream } from './jellyfin.ts'
 import type { Album } from './library.ts'
+import { conversion } from './playback.ts'
 
 export interface Quality {
   /** e.g. "FLAC · 24-bit / 96 kHz · stereo" */
@@ -72,12 +74,36 @@ function codec(stream: MediaStream, container: string): [string, boolean] {
   return known[c] ?? [c.toUpperCase() || '?', false]
 }
 
+/** A track's format: "FLAC · 24-bit / 96 kHz · stereo" */
 export function quality(track: Item): { text: string; hiRes: boolean } {
-  const source = track.MediaSources?.[0]
+  const { text, hiRes } = format(track.MediaSources?.[0])
+  return { text, hiRes }
+}
+
+/**
+ * How a file comes to the browser, as Jellyfin says it sends it (`source`,
+ * from PlaybackInfo): its format, with what it's converted to on the fly if
+ * it is ("ALAC → FLAC · 16-bit / 44.1 kHz · stereo"); and a word on that
+ */
+export function streamed(source: MediaSource): { text: string; hiRes: boolean; note: string } {
+  const { text, hiRes, name, target, lossless } = format(source, conversion(source).audio)
+  const note =
+    target === name
+      ? 'Streamed as the file is, not transcoded'
+      : `Converted on the fly from ${name} to ${target}${lossless ? ', losing nothing' : ''}: this browser doesn’t play ${name}`
+  return { text, hiRes, note }
+}
+
+/** A file's format, and its codec's name; converted on the fly to codec `to`, that too ("ALAC → FLAC · …") and whether it's lossless */
+function format(source: MediaSource | undefined, to?: string): { text: string; hiRes: boolean; name: string; target: string; lossless: boolean } {
   const stream = source?.MediaStreams?.find((s) => s.Type === 'Audio')
   const container = (source?.Container ?? '').toLowerCase()
-  if (!stream) return { text: container.toUpperCase() || '?', hiRes: false }
+  if (!stream) {
+    const name = container.toUpperCase() || '?'
+    return { text: name, hiRes: false, name, target: name, lossless: false }
+  }
   const [name, lossless] = codec(stream, container)
+  const [target, keeps] = to ? codec({ Type: 'Audio', Codec: to }, '') : [name, lossless]
   const rate = stream.SampleRate ?? 0
   const bits = stream.BitDepth ?? 0
   let detail: string
@@ -92,7 +118,8 @@ export function quality(track: Item): { text: string; hiRes: boolean } {
     detail = `${bits}-bit / ${khz(rate)}`
     hiRes = bits > 16 || rate > 48_000
   }
-  return { text: [name, detail, channels(stream.Channels)].filter(Boolean).join(' · '), hiRes }
+  const shown = target === name ? name : `${name} → ${target}`
+  return { text: [shown, detail, channels(stream.Channels)].filter(Boolean).join(' · '), hiRes: hiRes && keeps, name, target, lossless: keeps }
 }
 
 export function details(album: Album, tracks: Item[]): Details {
