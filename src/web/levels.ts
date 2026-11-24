@@ -1,14 +1,15 @@
-// How loud what's playing is, low to high: four levels read from its sound
-// (an AnalyserNode beside the speakers, like the spectrum's), for the mark
-// of the playing track to dance to.
+// How loud what's playing is, low to high: twelve levels read from its
+// sound (an AnalyserNode beside the speakers, like the spectrum's), for the
+// mark of the playing track to dance to.
 
-/** The four bands (Hz): bass, low mids, high mids, treble */
-const BANDS: [number, number][] = [
-  [40, 160],
-  [160, 640],
-  [640, 2500],
-  [2500, 10000],
-]
+/** How many bands: each two thirds of an octave, from the bass up */
+export const BAND_COUNT = 12
+const LOWEST_HZ = 40
+const HIGHEST_HZ = 10_000
+
+/** The bands (Hz), evenly spread over the octaves between the lowest and the highest */
+const STEP = (HIGHEST_HZ / LOWEST_HZ) ** (1 / BAND_COUNT)
+const BANDS: [number, number][] = Array.from({ length: BAND_COUNT }, (_, i) => [LOWEST_HZ * STEP ** i, LOWEST_HZ * STEP ** (i + 1)])
 
 /** One listener per sound source, shared by every mark */
 const taps = new WeakMap<AudioNode, AnalyserNode>()
@@ -18,7 +19,8 @@ export function tap(source: AudioNode): AnalyserNode {
   let analyser = taps.get(source)
   if (!analyser) {
     analyser = source.context.createAnalyser()
-    analyser.fftSize = 1024
+    // fine enough for the bass's narrow bands (a bin is some 23 Hz)
+    analyser.fftSize = 2048
     analyser.smoothingTimeConstant = 0.6
     analyser.minDecibels = -80
     analyser.maxDecibels = -18
