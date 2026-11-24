@@ -49,7 +49,8 @@ with the same keys. A terminal version comes next and shares the same core.
 - **Watch:** films and series in rows, Netflix style, each row a Cover Flow
   of posters: Continue Watching (`x` takes one off), Movies and Shows newest
   first, then Documentaries, Kids, Action, Comedy, Drama and Thriller (each
-  title in one of them). The row you're on takes most of the screen. A
+  title in one of them). The row you're on takes most of the screen, the
+  title in the middle captioned with its year, rating and main genres. A
   series' page has its seasons and episodes;
   the next episode follows by itself. The player has YouTube's keys; the
   picture is never re-encoded, and sound the browser can't play (Dolby, DTS)
