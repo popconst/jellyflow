@@ -34,10 +34,12 @@
   /** How far down a poster's reflection shows, and how much of it a row keeps clear below it (in poster heights) */
   const REFLECTION = 0.16
   const BELOW_FLOOR = 0.08
-  /** Above each row its name: big over the row with the keys, so there's no doubt which it is; under that one, its title (px) */
+  /** Above each row its name: big over the row with the keys, so there's no doubt which it is; under that one, its title, what it is and its genres (px) */
   const LABEL = 30
   const LABEL_ON = 54
-  const CAPTION = 72
+  const CAPTION = 104
+  /** How many genres the caption shows: the main ones, first as Jellyfin lists them */
+  const GENRES = 3
   const GAP = 4
   /** Rows on the page around the one with the keys: one above, to go back up to; three below */
   const ABOVE = 1
@@ -344,15 +346,16 @@
     if (rest && t && key !== 'search') at[key] = t.id
   }
 
-  /** Under the row with the keys: what it's resting on (its rating apart, in gold) */
-  function caption(t: Tile): { text: string; score?: number | undefined; more?: string } {
+  /** Under the row with the keys: what it's resting on (its rating apart, in gold), and its main genres */
+  function caption(t: Tile): { text: string; score?: number | undefined; more?: string; genres: string[] } {
+    const title = t.title
+    const genres = title.genres.slice(0, GENRES)
     const e = t.episode
     if (e) {
-      return { text: `${resumable(e) ? '' : 'Next: '}${episodeCode(e)} · ${e.title}${resumable(e) ? ` · ${runtime(left(e))} left` : ''}` }
+      return { text: `${resumable(e) ? '' : 'Next: '}${episodeCode(e)} · ${e.title}${resumable(e) ? ` · ${runtime(left(e))} left` : ''}`, genres }
     }
-    const title = t.title
     const more = title.kind === 'movie' && resumable(title) ? `stopped at ${duration(title.resume)}` : status(title)
-    return { text: facts(title), score: title.score, more }
+    return { text: facts(title), score: title.score, more, genres }
   }
 
   /**
@@ -476,6 +479,9 @@
             <div class="sub">
               {c.text}{#if c.score}<Score value={c.score} />{:else if c.text && c.more}{' · '}{/if}{c.more}
             </div>
+            {#if c.genres.length}
+              <div class="genres">{#each c.genres as genre (genre)}<span>{genre}</span>{/each}</div>
+            {/if}
           {/if}
         </div>
       {/if}
@@ -660,6 +666,22 @@
   .caption .sub {
     color: var(--text-2);
     font-size: clamp(15px, 1.3vw, 19px);
+  }
+  .caption .genres {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .caption .genres span {
+    padding: 3px 11px;
+    border-radius: 999px;
+    font-size: clamp(12px, 0.95vw, 14px);
+    font-weight: 600;
+    color: var(--text);
+    text-shadow: none;
+    background: var(--glass), rgb(0 0 0 / 0.35);
+    box-shadow: var(--glass-edge);
   }
   /* on the posters, in rows shown scaled: sized by the row's scale (--row-scale) to read the same in every row */
   .watched,
