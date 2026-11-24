@@ -91,15 +91,20 @@
       'Everywhere',
       [
         ['Tab', 'Watch ⇄ Listen'],
-        ['Shift-Tab', 'Cover Flow ⇄ Folders'],
-        ['Space', 'play / pause'],
+        ['Space', 'play / pause the music'],
         ['< >', 'previous / next track'],
+        ['?', 'this help'],
+      ],
+    ],
+    [
+      'Listen',
+      [
+        ['Shift-Tab', 'Cover Flow ⇄ Folders'],
         ['c', 'go to what’s playing: its album glides in and opens at the track'],
         ['o', 'back to where you were before c (again: back to what’s playing)'],
         ['a', 'add to the queue'],
         ['i', 'album details: Jellyfin’s overview, tags, quality, links'],
         ['d w m', 'the album on Discogs, Wikipedia, MusicBrainz'],
-        ['?', 'this help'],
       ],
     ],
     [
