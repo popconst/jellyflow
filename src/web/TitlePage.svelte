@@ -9,11 +9,13 @@
   import type { Item } from '../core/jellyfin.ts'
   import { filmChoices, seriesChoice, type Choice } from '../core/page.ts'
   import { seasonsOf, upNext, type Episode } from '../core/shows.ts'
-  import { facts, left, resumable, runtime, startAt, status, type Title } from '../core/titles.ts'
+  import { facts, imdbUrl, left, resumable, runtime, startAt, status, type Title } from '../core/titles.ts'
+  import About from './About.svelte'
+  import Cast, { type Person } from './Cast.svelte'
   import Disc from './Disc.svelte'
   import Progress from './Progress.svelte'
-  import Score from './Score.svelte'
   import { keepInView } from './scroll.ts'
+  import Sheet from './Sheet.svelte'
   import { app } from './state.svelte.ts'
   import { videos } from './videos.svelte.ts'
   import { watch } from './watch.svelte.ts'
@@ -140,6 +142,9 @@
       case '<Enter>':
         if (!repeat) enter(cursor)
         break
+      case 'i':
+        if (imdb) window.open(imdb, '_blank', 'noopener')
+        return 'handled'
       // a series': its seasons; a film's page leaves them to Watch (on to the next film)
       case 'h':
       case '<Left>':
@@ -160,7 +165,17 @@
 
   const people = $derived(details?.People ?? [])
   /** The cast, as Jellyfin orders it (top billing first) */
-  const cast = $derived(people.filter((p) => p.Type === 'Actor').slice(0, 16))
+  const cast = $derived<Person[]>(
+    people
+      .filter((p) => p.Type === 'Actor')
+      .slice(0, 16)
+      .map((p, i) => ({
+        key: `${p.Id ?? p.Name}${i}`,
+        name: p.Name,
+        role: p.Role,
+        photo: p.Id && p.PrimaryImageTag && app.client ? app.client.posterUrl(p.Id, p.PrimaryImageTag, 144) : undefined,
+      })),
+  )
   /** "Gary Trousdale, Kirk Wise" */
   function names(type: string, most = 3): string {
     return [...new Set(people.filter((p) => p.Type === type).map((p) => p.Name))].slice(0, most).join(', ')
@@ -175,15 +190,6 @@
     if (title.kind !== 'movie' || !title.seconds) return ''
     return `ends at ${new Date(Date.now() + left(title) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
   })
-  /** "Taylor Swift" → "TS", for someone without a photo */
-  function initials(name: string): string {
-    return name
-      .split(/\s+/)
-      .map((w) => w[0] ?? '')
-      .join('')
-      .slice(0, 2)
-      .toUpperCase()
-  }
   const regular = $derived(seasons.filter((s) => s.season !== 0).length)
   /** After the rating: whether it's been watched and when it would end; a series' seasons and what's left */
   const more = $derived(
@@ -192,33 +198,24 @@
       .join(' · '),
   )
   const art = $derived(videos.backdrop(title))
+  /** Its page on IMDb, if Jellyfin knows it (i opens it) */
+  const imdb = $derived(imdbUrl(details?.ProviderIds?.['Imdb']))
 </script>
 
 
-<div class="sheet">
-  {#if art}<img class="art" src={art} alt="" />{/if}
-  <header>
-    <div class="name">{title.title}</div>
-    <div class="facts">
-      {facts(title)}{#if title.score}<Score value={title.score} />{:else if more}{' · '}{/if}{more}
-    </div>
-    {#if title.genres.length}<div class="genres">{title.genres.join(' · ')}</div>{/if}
-  </header>
-
+<Sheet {art} name={title.title} facts={facts(title)} score={title.score} {more} genres={title.genres} links={imdb ? [{ label: 'IMDb', url: imdb, key: 'i' }] : []}>
   {#if title.kind === 'movie'}
-    <div class="about">
-      {#if title.tagline}<p class="tagline">{title.tagline}</p>{/if}
-      {#if title.overview}<p>{title.overview}</p>{/if}
-      <dl class="credits">
-        {#if directors}<dt>Director</dt><dd>{directors}</dd>{/if}
-        {#if writers}<dt>Writers</dt><dd>{writers}</dd>{/if}
-        {#if studios}<dt>Studio</dt><dd>{studios}</dd>{/if}
-      </dl>
-      {#if tags.length}
-        <div class="tags">{#each tags as tag (tag)}<span>{tag}</span>{/each}</div>
-      {/if}
-    </div>
-    {@render faces()}
+    <About
+      tagline={title.tagline}
+      overview={title.overview}
+      credits={[
+        ['Director', directors],
+        ['Writers', writers],
+        ['Studio', studios],
+      ]}
+      {tags}
+    />
+    <Cast people={cast} />
   {:else}
     {#if title.overview}<p class="overview">{title.overview}</p>{/if}
     {#if creators || studios}
@@ -228,27 +225,6 @@
       </p>
     {/if}
   {/if}
-
-  <!-- the cast: faces in a row, top billing first, scrolled sideways -->
-  {#snippet faces()}
-    {#if cast.length}
-      <ul class="cast" aria-label="Cast">
-        {#each cast as person, i (`${person.Id ?? person.Name}${i}`)}
-          <li title={person.Role ? `${person.Name} as ${person.Role}` : person.Name}>
-            <span class="face">
-              {#if person.Id && person.PrimaryImageTag && app.client}
-                <img src={app.client.posterUrl(person.Id, person.PrimaryImageTag, 144)} alt="" loading="lazy" decoding="async" />
-              {:else}
-                {initials(person.Name)}
-              {/if}
-            </span>
-            <span class="who">{person.Name}</span>
-            {#if person.Role}<span class="as">{person.Role}</span>{/if}
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  {/snippet}
 
   <!-- the player bar's buttons: the first a white disc, the next on glass; the cursor a pane of glass around one -->
   <div class="actions">
@@ -298,148 +274,11 @@
       {#if !episodes}<li class="wait">Loading episodes…</li>{/if}
     </ol>
     <!-- at the bottom, as on a film's page -->
-    {@render faces()}
+    <Cast people={cast} />
   {/if}
-</div>
+</Sheet>
 
 <style>
-  .sheet {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    padding: 22px 16px 14px;
-    overflow: hidden;
-    background: #0d0d10;
-    box-shadow: 0 10px 40px rgb(0 0 0 / 0.6);
-  }
-  /* blurred by Jellyfin; dimmed by its opacity over the sheet's black */
-  .art {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    opacity: 0.3;
-  }
-  .sheet > :not(.art) {
-    position: relative;
-  }
-  header {
-    padding: 0 10px 10px;
-    border-bottom: 1px solid rgb(255 255 255 / 0.14);
-  }
-  .name {
-    font-size: 24px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-  }
-  .facts,
-  .genres {
-    color: var(--text-2);
-    font-size: 14px;
-  }
-  .about {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 4px 10px;
-    font-size: 15px;
-    line-height: 1.45;
-    color: var(--text);
-  }
-  .tagline {
-    font-style: italic;
-    color: var(--text-2);
-  }
-  /* who made it: slim label / name lines, like Jellyfin's */
-  .credits {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 3px 14px;
-    margin: 12px 0 0;
-    font-size: 14px;
-  }
-  .credits dt {
-    color: var(--text-3);
-  }
-  .credits dd {
-    margin: 0;
-    color: var(--text);
-  }
-  .tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 12px 0 4px;
-  }
-  .tags span {
-    padding: 2px 10px;
-    border-radius: 999px;
-    font-size: 12px;
-    color: var(--text-2);
-    background: var(--glass);
-    box-shadow: var(--glass-edge);
-  }
-  /* the cast: faces in a row, scrolled sideways */
-  .cast {
-    display: flex;
-    gap: 6px;
-    margin: 8px 0 0;
-    padding: 6px 6px 2px;
-    list-style: none;
-    overflow-x: auto;
-    scrollbar-width: none;
-    flex: none;
-  }
-  .cast li {
-    flex: none;
-    width: 84px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-  .face {
-    width: 62px;
-    height: 62px;
-    border-radius: 50%;
-    overflow: hidden;
-    display: grid;
-    place-items: center;
-    font-weight: 700;
-    color: var(--text-2);
-    background: var(--placeholder);
-    box-shadow:
-      0 0 0 1px rgb(255 255 255 / 0.18),
-      0 6px 14px -6px rgb(0 0 0 / 0.9);
-  }
-  .face img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: 50% 18%;
-  }
-  .who {
-    margin-top: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1.25;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .as {
-    font-size: 11px;
-    line-height: 1.25;
-    color: var(--text-3);
-    max-width: 100%;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
   /* a series': who made it, one slim line */
   .with {
     display: flex;

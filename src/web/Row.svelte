@@ -11,6 +11,8 @@
 <script module lang="ts">
   /** The middle cover's scale */
   export const FOCUS = 1.2
+  /** How long a page takes to swing open, or shut (ms) */
+  export const FOLD = 650
   /** The row's height: a little room, the middle cover, as much of its reflection as shows (in side-cover heights) */
   const HEIGHT = 0.06 + FOCUS + 0.36
 
@@ -212,12 +214,16 @@
     return active && settled && index === place ? u : undefined
   }
 
-  /** The page swinging open from behind the middle cover, hinged on its edge; and shut again */
+  /**
+   * The page swinging open from behind the middle cover, hinged on its edge;
+   * and shut again, the same swing backwards. Eased here rather than by
+   * `easing`, which eases the time both ways: shutting would start at full
+   * speed, edge-on in a tenth of a second, and past that its back is hidden
+   */
   function fold(_node: Element) {
     return {
-      duration: 650,
-      easing: cubicOut,
-      css: (t: number) => `transform: rotateY(${(-180 * (1 - t)).toFixed(2)}deg)`,
+      duration: FOLD,
+      css: (t: number) => `transform: rotateY(${(-180 * (1 - cubicOut(t))).toFixed(2)}deg)`,
     }
   }
 
@@ -452,7 +458,7 @@
       >
         {@render art(item, thumb)}
         {#if sharpUrl}
-          <img class="sharp" src={sharpUrl} alt="" decoding="async" onload={() => sharpReady.add(sharpUrl)} />
+          <img class="sharp" class:ready={sharpReady.has(sharpUrl)} src={sharpUrl} alt="" decoding="async" onload={() => sharpReady.add(sharpUrl)} />
         {/if}
         {@render badge?.(item)}
         <!-- the reflection on the floor: the cover upside down, fading out -->
@@ -495,7 +501,12 @@
     transform-style: preserve-3d;
     /* clicks go through it to the covers behind its plane (the side ones are pushed back) */
     pointer-events: none;
-    transition: transform 650ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    /* back to the middle as the page shuts: its slide out, backwards */
+    transition: transform 650ms cubic-bezier(0.64, 0, 0.78, 0.39);
+  }
+  /* out of the way as the page opens: quick, then easing in */
+  .open .row {
+    transition-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
   }
   .cover {
     position: absolute;
@@ -533,6 +544,12 @@
   .open .cover.aside[data-side='1'] {
     opacity: 0;
   }
+  /* and as it shuts, they come back once it's swung off them (before, they'd poke through it) */
+  .stage:not(.open) .cover[data-side='1'] {
+    transition:
+      opacity 300ms 400ms,
+      translate 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
   .page {
     position: absolute;
     pointer-events: auto;
@@ -557,6 +574,7 @@
     -webkit-mask-image: linear-gradient(to top, rgb(0 0 0 / 0.3), transparent var(--reflection, 45%));
     mask-image: linear-gradient(to top, rgb(0 0 0 / 0.3), transparent var(--reflection, 45%));
   }
+  /* over the small one once it's all there, not drawn in top-down as it arrives */
   .sharp {
     position: absolute;
     top: 0;
@@ -564,6 +582,10 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+    opacity: 0;
+  }
+  .sharp.ready {
+    opacity: 1;
   }
   /* each side cover shaded; how much shows as it leaves the middle (--edge) */
   .cover::after {

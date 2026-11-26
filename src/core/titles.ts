@@ -108,3 +108,8 @@ export function status(t: Title): string {
   if (t.played) return 'watched'
   return t.kind === 'show' && t.unwatched ? `${t.unwatched} to watch` : ''
 }
+
+/** A film's or a series' page on IMDb, from its IMDb id ("tt0133093") */
+export function imdbUrl(id: string | null | undefined): string | undefined {
+  return id && /^tt\d+$/.test(id) ? `https://www.imdb.com/title/${id}/` : undefined
+}

@@ -16,7 +16,7 @@ import {
   subtitleTracks,
   type Caps,
 } from './playback.ts'
-import { filterTitles, left, progress } from './titles.ts'
+import { filterTitles, imdbUrl, left, progress } from './titles.ts'
 import { linesAt, parseVtt } from './vtt.ts'
 
 const film = (id: string, name: string, sort: string, year: number, genres: string[], extra: Partial<Item> = {}): Item => ({
@@ -214,4 +214,12 @@ test('subtitles: WebVTT read into plain cues, found by time', () => {
   assert.deepEqual(linesAt(cues, 3.6), ['Oh, bother.', 'Second line'])
   assert.deepEqual(linesAt(cues, 3600.5), ['Late'])
   assert.deepEqual(linesAt(cues, 4000), [])
+})
+
+test('imdbUrl: a title\'s IMDb page from its id; nothing from anything else', () => {
+  assert.equal(imdbUrl('tt0133093'), 'https://www.imdb.com/title/tt0133093/')
+  assert.equal(imdbUrl(undefined), undefined)
+  assert.equal(imdbUrl(null), undefined)
+  assert.equal(imdbUrl(''), undefined)
+  assert.equal(imdbUrl('tt0133093/../x'), undefined)
 })

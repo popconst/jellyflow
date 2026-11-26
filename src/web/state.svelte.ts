@@ -6,9 +6,9 @@
 import { Jellyfin, login, SessionExpired, type Device, type Item, type Session } from '../core/jellyfin.ts'
 import { albumsFrom, TrackTitles, type Album } from '../core/library.ts'
 
-/** Watch (films and series), or Listen: Cover Flow or Folders */
-export type View = 'watch' | 'flow' | 'folders'
-export type Section = 'watch' | 'listen'
+/** Watch (films and series), Discover (beyond them), or Listen: Cover Flow or Folders */
+export type View = 'watch' | 'discover' | 'flow' | 'folders'
+export type Section = 'watch' | 'discover' | 'listen'
 
 export function stored<T>(key: string): T | undefined {
   try {
@@ -61,10 +61,12 @@ class App {
   view = $state<View>(initialView())
   /** Where Listen goes back to */
   listenView = $state<'flow' | 'folders'>(stored('jellyflow.listen') ?? 'flow')
-  section = $derived<Section>(this.view === 'watch' ? 'watch' : 'listen')
+  section = $derived<Section>(this.view === 'watch' || this.view === 'discover' ? this.view : 'listen')
+  /** jellyflow's server has Discover (discover.svelte.ts finds out) */
+  hasDiscover = $state(false)
   help = $state(false)
-  /** A page open beside the middle cover, by view: an album's in Cover Flow, a title's in Watch */
-  pageOpen = $state({ flow: false, watch: false })
+  /** A page open beside the middle cover, by view: an album's in Cover Flow, a title's in Watch or Discover */
+  pageOpen = $state({ flow: false, watch: false, discover: false })
   /** A page open and nothing done for a while: the header and the player bar are away, the views' lines faded */
   quiet = $state(false)
 
@@ -92,10 +94,11 @@ class App {
     this.handlers[event].push(handler)
   }
 
-  /** The sections there are: Watch with a film or series library, Listen with a music one */
+  /** The sections there are: Watch with a film or series library, Discover with a server that has it, Listen with a music library */
   get sections(): Section[] {
     const out: Section[] = []
     if (this.videoLibraries.length) out.push('watch')
+    if (this.hasDiscover) out.push('discover')
     if (this.library || !this.videoLibraries.length) out.push('listen')
     return out
   }
@@ -103,15 +106,15 @@ class App {
   setView(view: View): void {
     this.view = view
     store('jellyflow.view', view)
-    if (view !== 'watch') {
+    if (view === 'flow' || view === 'folders') {
       this.listenView = view
       store('jellyflow.listen', view)
     }
   }
 
-  /** Watch, or Listen where it was left */
+  /** Watch, Discover, or Listen where it was left */
   setSection(section: Section): void {
-    this.setView(section === 'watch' ? 'watch' : this.listenView)
+    this.setView(section === 'listen' ? this.listenView : section)
   }
 
   async login(server: string, user: string, password: string): Promise<void> {
@@ -149,7 +152,7 @@ class App {
       if (!library) {
         this.loading = ''
         if (!this.videoLibraries.length) throw new Error('This Jellyfin has no music, film or series library')
-        if (this.view !== 'watch') this.setView('watch')
+        if (this.section === 'listen') this.setView('watch')
         this.listen()
         return
       }
@@ -256,7 +259,7 @@ class App {
 /** Where the app opens: where it was left */
 function initialView(): View {
   const view = stored<View>('jellyflow.view')
-  return view === 'watch' || view === 'folders' ? view : 'flow'
+  return view === 'watch' || view === 'discover' || view === 'folders' ? view : 'flow'
 }
 
 export const app = new App()

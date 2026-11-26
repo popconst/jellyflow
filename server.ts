@@ -1,17 +1,33 @@
 // Serves the built web app (dist/) as a local web service: `npm run build`
 // once, then `npm start`. The page talks to Jellyfin directly (Jellyfin
-// allows it), so this only hands out files. HOST and PORT to change where.
+// allows it); this hands out its files, and under /api it answers what
+// Jellyfin can't: Discover and the wishlist (server/api.ts). Set up by the
+// environment (server/config.ts): HOST and PORT, JELLYFIN_URL, the TMDB
+// token, where the database goes.
 
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Api } from './server/api.ts'
+import { config } from './server/config.ts'
+import { Store } from './server/db.ts'
+import { Images } from './server/images.ts'
+import { Tmdb } from './server/tmdb.ts'
+import { Users } from './server/users.ts'
 
+const settings = config()
 const root = fileURLToPath(new URL('./dist/', import.meta.url))
 const assets = join(root, 'assets')
-const host = process.env['HOST'] ?? '127.0.0.1'
-const port = Number(process.env['PORT'] ?? 4173)
+
+const store = new Store(settings.database)
+const api = new Api({
+  store,
+  users: new Users(settings.jellyfin),
+  tmdb: settings.tmdbToken ? new Tmdb(settings.tmdbToken, store) : undefined,
+  images: new Images(settings.images),
+})
 
 const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -38,6 +54,10 @@ async function resolve(url: string): Promise<string | undefined> {
 }
 
 createServer(async (req, res) => {
+  if (req.url?.startsWith('/api/')) {
+    await api.handle(req, res)
+    return
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, { Allow: 'GET, HEAD' }).end()
     return
@@ -67,4 +87,8 @@ createServer(async (req, res) => {
   createReadStream(path)
     .on('error', () => res.destroy())
     .pipe(res)
-}).listen(port, host, () => console.log(`jellyflow on http://${host}:${port}`))
+}).listen(settings.port, settings.host, () => {
+  console.log(`jellyflow on http://${settings.host}:${settings.port}`)
+  console.log(settings.tmdbToken ? 'Discover: on' : 'Discover: off (no TMDB token)')
+  void api.preload().catch((e: unknown) => console.error(`Discover: TMDB didn't answer (${e instanceof Error ? e.message : String(e)})`))
+})

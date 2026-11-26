@@ -2,11 +2,13 @@
   import { onMount } from 'svelte'
   import { keyName } from '../core/keys.ts'
   import Coverflow from './Coverflow.svelte'
+  import Discover from './Discover.svelte'
+  import { discover } from './discover.svelte.ts'
   import Folders from './Folders.svelte'
   import Login from './Login.svelte'
   import { player } from './player.svelte.ts'
   import PlayerBar from './PlayerBar.svelte'
-  import { app, typing } from './state.svelte.ts'
+  import { app, typing, type Section } from './state.svelte.ts'
   import VideoPlayer from './VideoPlayer.svelte'
   import { videos } from './videos.svelte.ts'
   import Watch from './Watch.svelte'
@@ -17,7 +19,7 @@
 
   /** With a page open, after this long with nothing done, the header and the player bar glide away (ms) */
   const QUIET_MS = 5000
-  const pageOpen = $derived(app.view === 'flow' ? app.pageOpen.flow : app.view === 'watch' ? app.pageOpen.watch : false)
+  const pageOpen = $derived(app.view === 'folders' ? false : app.pageOpen[app.view])
   $effect(() => {
     if (!pageOpen) {
       app.quiet = false
@@ -46,10 +48,10 @@
   function onkeydown(e: KeyboardEvent): void {
     if (!app.session || typing(e)) return
     switch (keyName(e)) {
-      // Tab: Watch ⇄ Listen; Shift-Tab: Cover Flow ⇄ Folders
+      // Tab: the next section (Watch, Discover, Listen); Shift-Tab: Cover Flow ⇄ Folders
       case '<Tab>':
         if (e.shiftKey) app.setView(app.view === 'flow' ? 'folders' : 'flow')
-        else if (app.sections.length > 1) app.setSection(app.section === 'watch' ? 'listen' : 'watch')
+        else if (app.sections.length > 1) app.setSection(app.sections[(app.sections.indexOf(app.section) + 1) % app.sections.length] ?? 'listen')
         break
       case '<Space>':
         player.toggle()
@@ -78,6 +80,8 @@
     if (app.session && (e.target as HTMLElement).closest('button')) e.preventDefault()
   }
 
+  const NAMES: Record<Section, string> = { watch: 'Watch', discover: 'Discover', listen: 'Listen' }
+
   /** "61 films · 20 series" */
   function watchCount(): string {
     if (!videos.read) return videos.loading ? 'Loading films and series…' : ''
@@ -86,11 +90,18 @@
     return [films ? `${films} ${films === 1 ? 'film' : 'films'}` : '', series ? `${series} series` : ''].filter(Boolean).join(' · ')
   }
 
+  /** "3 on your wishlist" */
+  function discoverCount(): string {
+    if (!discover.read) return discover.loading ? 'Finding films…' : ''
+    const n = discover.wishlist.length
+    return n ? `${n} on your wishlist` : 'Nothing on your wishlist yet'
+  }
+
   const help: [string, [string, string][]][] = [
     [
       'Everywhere',
       [
-        ['Tab', 'Watch ⇄ Listen'],
+        ['Tab', 'Watch → Discover → Listen'],
         ['Space', 'play / pause the music'],
         ['< >', 'previous / next track'],
         ['?', 'this help'],
@@ -143,11 +154,24 @@
       ],
     ],
     [
+      'Discover',
+      [
+        ['j k h l', 'rows and titles, as in Watch; Enter opens a title’s page'],
+        ['w', 'on your wishlist, or off it (also Enter on a title’s page)'],
+        ['x', 'not interested: left out of Discover (off your wishlist too); on a title’s page, it shuts'],
+        ['u', 'puts back the last one you weren’t interested in'],
+        ['k Esc', 'on a title’s page: close it'],
+        ['i', 'on a title’s page: the film or series on IMDb'],
+        ['/', 'search all of TMDB by title; Enter browses what’s found, Esc brings the rows back'],
+      ],
+    ],
+    [
       'A film’s or series’ page',
       [
         ['j k', 'down / up: Resume or Play, a series’ episodes; k at the top closes'],
         ['h l', 'a series’ seasons; on a film’s page, the previous / next film'],
         ['Enter', 'play it (or resume it, where it was stopped)'],
+        ['i', 'the film or series on IMDb'],
         ['Esc q', 'close the page'],
       ],
     ],
@@ -178,8 +202,9 @@
       <span class="logo">jelly<span>flow</span></span>
       {#if app.sections.length > 1}
         <nav>
-          <button class:on={app.section === 'watch'} onclick={() => app.setSection('watch')}>Watch</button>
-          <button class:on={app.section === 'listen'} onclick={() => app.setSection('listen')}>Listen</button>
+          {#each app.sections as section (section)}
+            <button class:on={app.section === section} onclick={() => app.setSection(section)}>{NAMES[section]}</button>
+          {/each}
         </nav>
         <kbd class="tabhint" title="Tab switches">Tab</kbd>
       {/if}
@@ -191,13 +216,16 @@
         <kbd class="tabhint" title="Shift-Tab switches">⇧Tab</kbd>
       {/if}
       <span class="status">
-        {#if app.status}{app.status}{:else if app.section === 'watch'}{watchCount()}{:else if app.loading}Loading {app.loading}…{:else}{app.albums.length} albums{/if}
+        {#if app.status}{app.status}{:else if app.section === 'watch'}{watchCount()}{:else if app.section === 'discover'}{discoverCount()}{:else if app.loading}Loading {app.loading}…{:else}{app.albums.length} albums{/if}
       </span>
       <button class="user" onclick={() => app.logout()} title="Log out">{app.session.userName} · log out</button>
     </header>
     <main>
       {#if app.videoLibraries.length}
         <div class="view" hidden={app.view !== 'watch'}><Watch /></div>
+      {/if}
+      {#if app.hasDiscover}
+        <div class="view" hidden={app.view !== 'discover'}><Discover /></div>
       {/if}
       <div class="view" hidden={app.view !== 'flow'}><Coverflow /></div>
       <div class="view" hidden={app.view !== 'folders'}><Folders /></div>

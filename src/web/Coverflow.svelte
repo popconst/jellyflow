@@ -529,6 +529,7 @@
   }
   .flow.open .caption {
     opacity: 0;
+    transition-delay: 0ms;
   }
   .vignette {
     position: absolute;
@@ -544,6 +545,7 @@
       rgb(0 0 0 / 0.35) 84%,
       rgb(0 0 0 / 0.92)
     );
+    transition: opacity 450ms;
   }
   .flow.open .vignette {
     opacity: 0;
@@ -618,6 +620,8 @@
     padding: 0 16px;
     text-shadow: 0 1px 8px #000;
     pointer-events: none;
+    /* back once the album's page has swung shut */
+    transition: opacity 300ms 450ms;
   }
   .title {
     font-size: clamp(18px, 2.2vw, 26px);

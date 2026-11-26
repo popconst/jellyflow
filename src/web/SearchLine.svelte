@@ -22,11 +22,12 @@
     hint?: Snippet | undefined
     /** The app is quiet (a page open, nothing done for a while): the line fades */
     quiet?: boolean
-    oninput: () => void
-    onclear: () => void
-    oncancel: () => void
-    ondone: () => void
-    onmove: (dir: -1 | 1, e: KeyboardEvent) => void
+    /** The search's keys: what they do is the view's */
+    oninput?: () => void
+    onclear?: () => void
+    oncancel?: () => void
+    ondone?: () => void
+    onmove?: (dir: -1 | 1, e: KeyboardEvent) => void
   }
   let {
     searching,
@@ -39,10 +40,10 @@
     hint,
     quiet = false,
     oninput,
-    onclear,
-    oncancel,
-    ondone,
-    onmove,
+    onclear = () => undefined,
+    oncancel = () => undefined,
+    ondone = () => undefined,
+    onmove = () => undefined,
   }: Props = $props()
 
   let input = $state<HTMLInputElement>()

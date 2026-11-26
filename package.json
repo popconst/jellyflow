@@ -8,9 +8,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start": "node server.ts",
-    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p tsconfig.core.json",
-    "test": "node --test \"src/core/*.test.ts\""
+    "start": "node --disable-warning=ExperimentalWarning server.ts",
+    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p tsconfig.core.json && tsc -p tsconfig.server.json",
+    "test": "node --disable-warning=ExperimentalWarning --test \"src/core/*.test.ts\" \"server/*.test.ts\""
   },
   "engines": {
     "node": ">=22.18"

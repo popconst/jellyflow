@@ -5,6 +5,9 @@ keyboard, with vim keys.
 
 - **Watch:** your films and series in rows of posters, Netflix style, each
   row a Cover Flow. The player sends the picture as it is in the file.
+- **Discover:** films and series beyond your library, from TMDB: the best
+  series (3+ seasons) and films of this year and the three before, in the
+  same rows, with a wishlist. It's optional, through jellyflow's own server.
 - **Listen:** your music, flipped through by album cover (Cover Flow) or
   walked folder by folder with album art.
 
@@ -46,6 +49,35 @@ shares the same core.
 - **Picks up where you stopped,** in jellyflow and in Jellyfin's other apps.
   The next episode follows by itself, and the audio and subtitle languages
   you chose carry over to the next film or episode.
+
+## Discover
+
+- **The best series** of this year and the three before, with 3 seasons
+  out or more: each in the year it was last on, the year it ended or (still
+  running) its latest season's. Of TMDB's most voted for that year (score
+  7.5 or more from at least 200 votes), the best scored first; how many
+  seasons, and whether it ended, under each.
+- **The best films** of this year and the three before: TMDB score 7.2 or
+  more from at least 200 votes: of the most popular, the best scored first.
+- The lists are worked out when the server starts, and their posters
+  fetched ahead and kept on the server, so Discover opens at once and a
+  fast scroll along a row doesn't wait for TMDB.
+- **The same rows as Watch,** with TMDB's posters, each title's score, how
+  many voted and its genres. What you have carries a tick, what you wished
+  for a heart.
+- **A title's page**, like Watch's: what it's about, who made it, its cast,
+  and its IMDb link (`i`).
+- **A wishlist** (`w`), kept on jellyflow's server for each Jellyfin user,
+  in its own row at the top, the best scored first like the rest.
+- **Only what's new to you:** what's in your library or on your wishlist
+  isn't in the year rows, nor what you're not interested in (`x`, which
+  also takes it off your wishlist; `u` puts it back). Go along a row with
+  `x` and `w` to clear it. A title's page holds its row still until it
+  shuts.
+- **Search** (`/`): any film or series on TMDB, by title, to look at or
+  wish for.
+- **Optional:** it needs jellyflow's server with a TMDB token ([below](#discover-and-the-wishlist-optional)).
+  Without one there's no Discover, and nothing goes to TMDB.
 
 ## Listen
 
@@ -93,8 +125,9 @@ shares the same core.
 - **Out of the way:** with an album or a title open, the header and the
   player bar glide away after a few seconds of nothing. Any move brings
   them back.
-- **Light:** two runtime dependencies and no backend of its own. The page
-  talks to your Jellyfin directly.
+- **Light:** two runtime dependencies. The page talks to your Jellyfin
+  directly; jellyflow's own small server only hands it its files, and
+  Discover when it has a TMDB token.
 
 ## Requirements
 
@@ -129,8 +162,9 @@ to allow it. Jellyfin allows any origin by default.
 npm run build && npm start     # http://127.0.0.1:4173
 ```
 
-`HOST` and `PORT` change where it listens. `server.ts` only serves the built
-files and has no dependencies. To keep it running with
+`HOST` and `PORT` change where it listens. `server.ts` serves the built
+files, and under `/api` what Jellyfin can't do: Discover and the wishlist
+(below). It has no dependencies. To keep it running with
 [pm2](https://pm2.keymetrics.io):
 
 ```sh
@@ -139,12 +173,64 @@ npm run build && pm2 start ecosystem.config.cjs
 
 A rebuild is a redeploy: the server always serves what's in `dist/`.
 
+### Discover and the wishlist (optional)
+
+Films and series beyond your library come from [TMDB](https://www.themoviedb.org),
+through the server, which holds your TMDB token so the browser never sees it.
+Get a free API read access token (TMDB account → Settings → API), then on the
+machine running the server:
+
+```sh
+mkdir -p ~/.config/jellyflow && (umask 077; cat > ~/.config/jellyflow/tmdb-token)   # paste it, then Ctrl-D
+pm2 restart jellyflow
+```
+
+Without a token there's no Discover, and nothing goes to TMDB. The server
+needs to reach Jellyfin too, to check who's asking (`JELLYFIN_URL`, by
+default `http://127.0.0.1:8096`: Jellyfin on the same machine).
+
+| Variable | Default | |
+|---|---|---|
+| `JELLYFIN_URL` | `http://127.0.0.1:8096` | Jellyfin, as the server reaches it |
+| `TMDB_TOKEN_FILE` | `~/.config/jellyflow/tmdb-token` | the token (or `TMDB_TOKEN` itself) |
+| `DATABASE` | `~/.local/share/jellyflow/jellyflow.db` | SQLite: TMDB's answers, the lists, the wishlist |
+| `IMAGES` | `~/.cache/jellyflow/images` | TMDB's posters and backdrops, once fetched (safe to delete) |
+
+The API, for jellyflow's page: every call but images sends the page's
+Jellyfin login along (its `Authorization` header), and the server asks
+Jellyfin whose it is, so each Jellyfin user has their own lists and
+wishlist, and nobody without a login gets anything.
+
+| | |
+|---|---|
+| `GET /api/me` | who's asking; whether Discover is on |
+| `GET /api/discover` | the lists (`?refresh=1`: worked out afresh; otherwise every 12 hours) |
+| `GET /api/wishlist` | the wishlist, newest first |
+| `PUT /api/wishlist/{ref}` | add a film or series (`tmdb:movie:603`, `tmdb:tv:1399`) |
+| `DELETE /api/wishlist/{ref}` | remove one |
+| `GET /api/dismissed` | what you're not interested in |
+| `PUT /api/dismissed/{ref}` | not interested (off the wishlist too) |
+| `DELETE /api/dismissed/{ref}` | of interest again |
+| `GET /api/search?q=…` | films and series on TMDB by title, marked as the lists are |
+| `GET /api/tmdb/{path}` | TMDB itself, for a title's or a person's page (only what Discover reads) |
+| `GET /api/img/{size}/{file}` | TMDB's posters and backdrops |
+
+The lists Discover shows for now: the best series of this year and the three
+before, in the year each was last on (3+ seasons out, TMDB score 7.5+ from
+200+ votes; no news, reality, soaps or talk shows), and the best films of
+those years (TMDB score 7.2+ from 200+ votes). The server can work out more,
+from your library: new and coming from the directors and actors it's most
+made of (weighed by what you watched), because you watched (your last
+three), what's next for your series, in cinemas, coming soon and trending
+(`ALL` in `server/discover.ts`; `SHOWN` is what's on). Lists are kept for 12
+hours; TMDB's answers from hours (lists) to a month (a film's credits).
+
 ## Keys
 
 `?` shows them all.
 
 **Everywhere:**
-- `Tab`: switch between Watch and Listen.
+- `Tab`: the next of Watch, Discover and Listen.
 - `Space`: play or pause the music.
 - `<` `>`: previous or next track.
 
@@ -166,7 +252,20 @@ A rebuild is a redeploy: the server always serves what's in `dist/`.
 | `j` `k` | Resume or Play, and a series' episodes; `k` at the top closes the page |
 | `h` `l` | a series' seasons; on a film's page, the previous / next film |
 | `Enter` | play it, or resume it where it was stopped |
+| `i` | the film or series on IMDb (its link is in the page's corner) |
 | `Esc` `q` | close the page (so does a click away) |
+
+**Discover:** the rows' keys are Watch's.
+
+| Key | |
+|---|---|
+| `Enter` | open a film's or series' page |
+| `w` | on your wishlist, or off it (`Enter` too, on a title's page) |
+| `i` | on a title's page: the film or series on IMDb |
+| `x` | not interested: it's left out of Discover (and off your wishlist); on a title's page, the page shuts too |
+| `u` | puts back the last one you weren't interested in |
+| `k` `Esc` `q` | close a title's page (so does a click away) |
+| `/` | search all of TMDB by title; `Enter` browses what's found, `Esc` brings the rows back |
 
 **Watching** (YouTube's keys):
 
@@ -312,13 +411,21 @@ A rebuild is a redeploy: the server always serves what's in `dist/`.
 
 ## Privacy
 
-Everything stays between your browser and your Jellyfin.
+Everything stays between your browser, your Jellyfin and jellyflow's own
+server, unless you give that server a TMDB token (Discover).
 
 - **The login** (server, user name and access token) and what's remembered
   across reloads are kept in the browser's `localStorage`. Logging out ends
   the session on the server too.
 - **In Jellyfin itself,** jellyflow keeps one thing besides where you
   stopped watching: what you took off Continue Watching.
+- **On jellyflow's server,** with Discover on: each user's lists, wishlist
+  and what they're not interested in, and TMDB's answers, in a SQLite file;
+  TMDB's images in a folder.
+- **Discover asks TMDB** from the server, not the browser, with the server's
+  token: about the films and series in your library (who made them, what's
+  like them), about the people in them, and what you search for in
+  Discover. TMDB sees the server ask, and which titles; not who you are.
 - **Nothing is sent anywhere else,** except that `d` / `w` / `m` and the
   details' links open an album on Discogs, Wikipedia or MusicBrainz when
   you ask for them.
@@ -333,9 +440,14 @@ src/core/   The Jellyfin client and everything that doesn't need a page:
             subtitles. Plain TypeScript that Node runs as it is (type
             stripping), to be shared with the terminal app.
             tsconfig.core.json checks it without DOM types.
-src/web/    The Svelte 5 app: Watch (the rows, a title's page), Cover Flow,
-            Folders, the players and their streams, the spectrum.
-server.ts   serves dist/ (no dependencies)
+src/web/    The Svelte 5 app: Watch and Discover (the same rows of posters,
+            a title's page), Cover Flow, Folders, the players and their
+            streams, the spectrum.
+server.ts   serves dist/, and the API under /api (no dependencies)
+server/     the API: who's asking (Jellyfin says), TMDB through the server's
+            token, the Discover lists, the wishlist, TMDB's images kept on
+            disk; SQLite (node:sqlite).
+            tsconfig.server.json checks it without DOM types.
 ```
 
 The runtime dependencies are audioMotion-analyzer (the spectrum, with no
@@ -345,9 +457,9 @@ it). Svelte, Vite and TypeScript are dev dependencies.
 ## Develop
 
 ```sh
-npm run dev      # Vite, with hot reload
-npm run check    # svelte-check (strict, warnings fail) + the core without the DOM
-npm test         # node --test on src/core
+npm run dev      # Vite, with hot reload; /api goes to npm start's server
+npm run check    # svelte-check (strict, warnings fail) + the core and the server without the DOM
+npm test         # node --test on src/core and server/
 npm run build    # into dist/
 ```
 
