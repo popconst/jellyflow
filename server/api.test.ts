@@ -84,6 +84,7 @@ test('the wishlist: on, newest first, marked; off', async () => {
   assert.equal((await call(wishRef(603), 'DELETE')).status, 204)
   assert.equal((await call(wishRef(603), 'DELETE')).status, 404)
   assert.equal((await call('/api/wishlist/tmdb%3Aperson%3A1', 'PUT')).status, 400)
+  assert.equal((await call('/api/wishlist/%E0', 'PUT')).status, 400, 'a malformed escape')
 })
 
 test('discover: the lists, marking what the library has and what is wished for; kept, not worked out again', async () => {

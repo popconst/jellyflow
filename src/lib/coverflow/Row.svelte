@@ -280,6 +280,15 @@
     }
   })
 
+  // other items or another size: covers the row no longer shows are forgotten, so neither set outgrows the row
+  $effect(() => {
+    const shown = new Set(items.flatMap((item) => [url(item, thumb), url(item, sharp)]))
+    untrack(() => {
+      for (const u of fetched) if (!shown.has(u)) fetched.delete(u)
+      for (const u of sharpReady) if (!shown.has(u)) sharpReady.delete(u)
+    })
+  })
+
   function snap(index: number): void {
     motion.snap(index)
     pos = motion.pos

@@ -85,7 +85,7 @@ async function read(url: string): Promise<string[]> {
   return [css([0, 0, Math.min(0.95, l + 0.12)]), css([0, 0, l]), css([0, 0, l - 0.25])]
 }
 
-/** An album's colours, read once; none when it has no cover or the cover can't be read */
+/** An album's colours, read once; none when it has no cover or the cover can't be read (tried again next time it's asked) */
 export function coverColours(albumId: string, tag: string | undefined): Promise<string[]> {
   const client = app.client
   if (!tag || !client) return Promise.resolve([])
@@ -94,6 +94,7 @@ export function coverColours(albumId: string, tag: string | undefined): Promise<
   if (!colours) {
     colours = read(url).catch((e: unknown) => {
       console.warn('jellyflow: could not read the colours of', url, e)
+      cache.delete(url)
       return []
     })
     cache.set(url, colours)

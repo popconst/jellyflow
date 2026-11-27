@@ -72,7 +72,7 @@ export class Api {
       if (route === 'img' && (req.method === 'GET' || req.method === 'HEAD')) return await this.image(res, rest, req.method === 'HEAD')
       const user = await this.users.who(req.headers.authorization)
       if (!user) throw new HttpError(401, 'Log in to jellyflow first')
-      const ref = decodeURIComponent(rest.join('/'))
+      const ref = decoded(rest.join('/'))
       switch (`${req.method} ${route}${rest.length ? '/' : ''}`) {
         case 'GET me':
           return json(res, 200, { id: user.id, name: user.name, discover: this.tmdb !== undefined })
@@ -244,6 +244,15 @@ export class Api {
 /** What a set of lists is kept as: the kinds shown, and the years they're of */
 function madeFor(years: number[]): string {
   return `${SHOWN.join(',')}:${years.join(',')}`
+}
+
+/** A path's part, unescaped: a malformed escape is the asker's mistake, not the server's */
+function decoded(part: string): string {
+  try {
+    return decodeURIComponent(part)
+  } catch {
+    throw new HttpError(400, `Not a valid path: ${part}`)
+  }
 }
 
 /** ?year=: one of TMDB's years, up to this one (undefined: none asked) */

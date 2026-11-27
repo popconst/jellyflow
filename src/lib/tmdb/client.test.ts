@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { keptFor, requestKey, Tmdb, TmdbError, type Allowed, type TmdbCache } from './client.ts'
+import { keptFor, requestKey, retryAfter, Tmdb, TmdbError, type Allowed, type TmdbCache } from './client.ts'
 
 const HOUR = 3_600_000
 const ALLOWED: Allowed[] = [
@@ -82,6 +82,15 @@ test("TMDB's rate limit is waited out", async () => {
   }) as unknown as typeof fetch
   assert.deepEqual(await tmdbWith(fetcher).get('/movie/1'), { id: 1 })
   assert.equal(calls, 2)
+})
+
+test('Retry-After: seconds or an HTTP date; a second when missing or unreadable; a minute at most', () => {
+  const now = Date.parse('2026-01-01T00:00:00Z')
+  assert.equal(retryAfter('3', now), 3000)
+  assert.equal(retryAfter('Thu, 01 Jan 2026 00:00:05 GMT', now), 5000)
+  assert.equal(retryAfter('Wed, 31 Dec 2025 23:59:00 GMT', now), 0)
+  assert.equal(retryAfter('3600', now), 60_000)
+  for (const unread of [null, '', 'soon']) assert.equal(retryAfter(unread, now), 1000, String(unread))
 })
 
 test('the token goes as a bearer', async () => {

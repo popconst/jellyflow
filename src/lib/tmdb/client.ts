@@ -9,6 +9,18 @@ const API = 'https://api.themoviedb.org/3'
 /** Requests to TMDB at once */
 const AT_ONCE = 16
 
+/** Waited for TMDB's rate limit when it doesn't say how long, and the most waited (ms) */
+const RETRY_AFTER = 1000
+const LONGEST_WAIT = 60_000
+
+/** How long to wait (ms) before asking again, from a Retry-After header: seconds or an HTTP date */
+export function retryAfter(header: string | null, now = Date.now()): number {
+  const value = header?.trim() ?? ''
+  if (!value) return RETRY_AFTER
+  const ms = /^\d+$/.test(value) ? Number(value) * 1000 : Date.parse(value) - now
+  return Number.isNaN(ms) ? RETRY_AFTER : Math.min(Math.max(ms, 0), LONGEST_WAIT)
+}
+
 /** A kind of request that may be made (its path), and how long its answer is kept (ms) */
 export type Allowed = [path: RegExp, keep: number]
 
@@ -108,7 +120,7 @@ export class Tmdb {
         signal: AbortSignal.timeout(15_000),
       })
       if (response.status === 429 && attempt < 2) {
-        await new Promise((r) => setTimeout(r, 1000 * Number(response.headers.get('Retry-After') ?? 1)))
+        await new Promise((r) => setTimeout(r, retryAfter(response.headers.get('Retry-After'))))
         continue
       }
       const body = await response.text()
