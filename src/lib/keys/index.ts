@@ -1,5 +1,14 @@
-// Vim-style key sequences: a count ("12"), then a key or a two-key command
-// ("gg"). Keys are named like vim's: "j", "G", "<C-d>", "<Enter>", "<Esc>".
+// Vim-style keys: a key event's name the way vim writes it ("j", "G",
+// "<C-d>", "<Enter>", "<Esc>"), and sequences of them: a count ("12"), then
+// a key or a two-key command ("gg"). Plain TypeScript, no DOM: it names a
+// browser's key events and a terminal's alike.
+//
+//   const keys = new Keys()
+//   onkeydown = (e) => {
+//     if (typing(e)) return
+//     const name = keyName(e)
+//     const command = name && keys.feed(name)   // { key: 'gg', count: 12 } once there's one
+//   }
 
 export interface Command {
   key: string
@@ -40,7 +49,7 @@ export class Keys {
   }
 }
 
-/** A browser or terminal key event's name, vim style */
+/** A browser or terminal key event's name, vim style; undefined with Cmd or Alt held, or for a key with no name here */
 export function keyName(e: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean }): string | undefined {
   if (e.metaKey || e.altKey) return undefined
   const named: Record<string, string> = {
@@ -61,4 +70,10 @@ export function keyName(e: { key: string; ctrlKey: boolean; metaKey: boolean; al
   const key = named[e.key] ?? (e.key.length === 1 ? e.key : undefined)
   if (!key) return undefined
   return e.ctrlKey ? `<C-${key.replace(/^<|>$/g, '').toLowerCase()}>` : key
+}
+
+/** Keys typed into a text field are the field's, not commands */
+export function typing(e: { target: unknown }): boolean {
+  const tag = (e.target as { tagName?: unknown } | null)?.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA'
 }

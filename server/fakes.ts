@@ -5,8 +5,11 @@
 
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { Tmdb, type TmdbCache } from '../src/lib/tmdb/index.ts'
+import { Store } from './db.ts'
+import { READS } from './discover.ts'
 
-export const TOKEN = 'good-token'
+const TOKEN = 'good-token'
 export const AUTH = `MediaBrowser Client="jellyflow", Device="Test", DeviceId="test-1", Version="0.1.0", Token="${TOKEN}"`
 
 const DAY = 86_400_000
@@ -193,4 +196,9 @@ export function fakeTmdb(answers: Record<string, unknown> = tmdbAnswers()): Fake
     return body === undefined ? new Response('{"status_message":"Not found"}', { status: 404 }) : Response.json(body)
   }) as typeof fetch
   return { fetcher, calls }
+}
+
+/** The server's TMDB client, as server.ts makes it, asking `fake`; its answers kept in `cache` */
+export function fakeTmdbClient(fake: FakeTmdb = fakeTmdb(), cache: TmdbCache = new Store(':memory:')): Tmdb {
+  return new Tmdb({ token: 'token', cache, allowed: READS, fetcher: fake.fetcher })
 }

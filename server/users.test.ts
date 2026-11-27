@@ -4,7 +4,7 @@ import { AUTH, fakeJellyfin } from './fakes.ts'
 import { credentials, Users } from './users.ts'
 
 test("credentials: the device and the token in the page's Authorization header", () => {
-  assert.deepEqual(credentials(AUTH), { token: 'good-token', device: { id: 'test-1', name: 'Test' } })
+  assert.deepEqual(credentials(AUTH), { token: 'good-token', device: { client: 'jellyflow', version: '0.1.0', id: 'test-1', name: 'Test' } })
   assert.equal(credentials('MediaBrowser Client="jellyflow", DeviceId="d"'), undefined, 'not logged in')
   assert.equal(credentials('Bearer good-token'), undefined)
   assert.equal(credentials(undefined), undefined)

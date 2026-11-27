@@ -3,7 +3,8 @@
 // users are remembered a few minutes; then Jellyfin is asked again, so a
 // logged-out token stops working soon after.
 
-import { Jellyfin, SessionExpired, type Device } from '../src/core/jellyfin.ts'
+import { CLIENT, VERSION } from '../src/core/jellyflow.ts'
+import { Jellyfin, SessionExpired, type Device } from '../src/lib/jellyfin/index.ts'
 
 /** How long Jellyfin's word on a token holds (ms) */
 const TRUSTED_FOR = 10 * 60_000
@@ -15,13 +16,17 @@ export interface User {
   jellyfin: Jellyfin
 }
 
-/** The device and token in a Jellyfin Authorization header ("MediaBrowser Client=…, Token=…") */
+/**
+ * The device and token in a Jellyfin Authorization header ("MediaBrowser
+ * Client=…, Token=…"); the server asks Jellyfin as jellyflow on that device
+ */
 export function credentials(header: string | undefined): { device: Device; token: string } | undefined {
   if (!header?.startsWith('MediaBrowser ')) return undefined
   const fields = new Map([...header.matchAll(/(\w+)="([^"]*)"/g)].map((m) => [m[1] ?? '', m[2] ?? '']))
   const token = fields.get('Token')
   if (!token) return undefined
-  return { token, device: { id: fields.get('DeviceId') ?? 'jellyflow-server', name: fields.get('Device') ?? 'jellyflow server' } }
+  const device = { client: CLIENT, version: VERSION, id: fields.get('DeviceId') ?? 'jellyflow-server', name: fields.get('Device') ?? 'jellyflow server' }
+  return { token, device }
 }
 
 export class Users {

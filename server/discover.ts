@@ -17,19 +17,40 @@ import {
   type TmdbPage,
   type TmdbTitle,
 } from '../src/core/discover.ts'
+import type { Allowed, Query } from '../src/lib/tmdb/index.ts'
 import type { Library, Owned } from './library.ts'
-import type { Query } from './tmdb.ts'
 
-/** What's needed of TMDB (the Tmdb class; tests give their own) */
+/** What's needed of TMDB: the Tmdb class's get */
 export interface TmdbReader {
   get<T>(path: string, query?: Query): Promise<T>
 }
 
-const DAY = 86_400_000
+const HOUR = 3_600_000
+const DAY = 24 * HOUR
+
+/**
+ * What jellyflow reads of TMDB, for the lists and for a title's page
+ * (through /api/tmdb), and how long each answer is kept: lists change
+ * daily, who made a film doesn't. Nothing else may be asked of the
+ * server's token
+ */
+export const READS: Allowed[] = [
+  [/^\/(movie|tv|person)\/\d+$/, DAY],
+  [/^\/movie\/\d+\/credits$/, 30 * DAY],
+  [/^\/tv\/\d+\/aggregate_credits$/, 7 * DAY],
+  [/^\/(movie|tv)\/\d+\/(recommendations|similar|videos|watch\/providers|external_ids)$/, DAY],
+  [/^\/person\/\d+\/(combined_credits|movie_credits|tv_credits|external_ids)$/, DAY],
+  [/^\/discover\/(movie|tv)$/, 6 * HOUR],
+  [/^\/trending\/(all|movie|tv|person)\/(day|week)$/, 6 * HOUR],
+  [/^\/movie\/(now_playing|upcoming|popular|top_rated)$/, 6 * HOUR],
+  [/^\/tv\/(on_the_air|airing_today|popular|top_rated)$/, 6 * HOUR],
+  [/^\/search\/(multi|movie|tv|person)$/, HOUR],
+  [/^\/genre\/(movie|tv)\/list$/, 7 * DAY],
+]
 /** The year's best: at least this score, from at least this many votes */
-export const BEST = { score: 7.2, votes: 200 }
+const BEST = { score: 7.2, votes: 200 }
 /** The year's best series: this many seasons out at least, this score, from this many votes */
-export const SERIES = { seasons: 3, score: 7.5, votes: 200 }
+const SERIES = { seasons: 3, score: 7.5, votes: 200 }
 /** TMDB's genres for news, reality, soaps and talk shows: not series to watch through */
 const NOT_SERIES = '10763,10764,10766,10767'
 /** "New" goes back this far */
@@ -137,7 +158,6 @@ function day(d: Date): string {
 function byDate(a: Suggestion, b: Suggestion): number {
   return (a.date ?? '9999').localeCompare(b.date ?? '9999')
 }
-
 
 /** New and coming from the people the library is most made by */
 async function fromPeople(tmdb: TmdbReader, library: Library, today: Date): Promise<Suggestion[]> {
@@ -289,8 +309,6 @@ export const ALL: ListKind[] = ['people', 'because', 'shows', 'series', 'best', 
 export const SHOWN: ListKind[] = ['series', 'best']
 /** Discover's years at first: this one and the three before it (older ones are asked for one at a time) */
 const LATEST_YEARS = 4
-/** The oldest year asked for */
-export const FIRST_YEAR = 1900
 
 /** This year and the ones before it that Discover starts with, the latest first */
 export function latestYears(today = new Date()): number[] {

@@ -1,6 +1,6 @@
 {
-  // The server (server.ts, server/) with the core it shares, without the DOM:
-  // what Node has, and only that
+  // The server (server.ts, server/) with the core and the libs it shares,
+  // without the DOM: what Node has, and only that
   "extends": "./tsconfig.core.json",
-  "include": ["server.ts", "server", "src/core"]
+  "include": ["server.ts", "server"]
 }

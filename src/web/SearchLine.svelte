@@ -1,8 +1,9 @@
 <!--
-  The line along the foot of a view (Cover Flow, Watch): searching (/), the
-  query typed in it; else the filter on, a note or a hint; and a count on the
-  right. Its keys are the search's: Ctrl-U clears, Esc cancels, Enter is done,
-  the arrows move the row while typing. What they do is the view's.
+  The line along the foot of a view (Cover Flow, Watch, Discover): searching
+  (/), the query typed in it; else the filter on, a note or a hint; and a
+  count on the right. Its keys are the search's: Ctrl-U clears, Esc cancels,
+  Enter is done, the arrows move the row while typing. What they do is the
+  view's (search.svelte.ts has Watch's and Discover's).
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte'

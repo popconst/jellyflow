@@ -41,7 +41,7 @@ const MIGRATIONS = [
    );`,
 ]
 
-/** TMDB's answers older than this go at startup (each kind of answer has its own, shorter, use-by in tmdb.ts) */
+/** TMDB's answers older than this go at startup (each kind of answer has its own, shorter, use-by: READS, in discover.ts) */
 const KEEP_TMDB = 60 * 24 * 3_600_000
 
 export interface Wish {

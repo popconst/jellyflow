@@ -1,6 +1,7 @@
 // An album's colours, sampled from its cover: its strongest hues, kept close
 // to how they look on the cover but bright enough to glow on black; greys for
-// a black-and-white cover. For the visualiser's gradient and the seek bar.
+// a black-and-white cover. For the spectrum's gradient, the playing mark's,
+// and the seek bars (the music's, a film's in its poster's colours).
 
 import { app } from './state.svelte.ts'
 

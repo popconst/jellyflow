@@ -3,9 +3,21 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { fakeTmdb } from './fakes.ts'
+import { TmdbError } from './client.ts'
 import { Images } from './images.ts'
-import { TmdbError } from './tmdb.ts'
+
+/** TMDB's images: three bytes each, but gone.jpg; each request's path */
+function fakeTmdb(): { fetcher: typeof fetch; calls: string[] } {
+  const calls: string[] = []
+  const fetcher = (async (input: string | URL | Request) => {
+    const url = new URL(input instanceof Request ? input.url : String(input))
+    calls.push(url.pathname)
+    return url.pathname.endsWith('/gone.jpg')
+      ? new Response('', { status: 404 })
+      : new Response(new Uint8Array([1, 2, 3]), { headers: { 'Content-Type': 'image/jpeg' } })
+  }) as typeof fetch
+  return { fetcher, calls }
+}
 
 function withDir(work: (dir: string) => Promise<void>): () => Promise<void> {
   return async () => {

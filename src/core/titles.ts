@@ -2,9 +2,9 @@
 // fields read from Jellyfin, the facts and status lines, how far one was
 // watched, and the search that finds one by its title, year or genre.
 
-import { compareNames, type Item } from './jellyfin.ts'
-import { fold, words } from './library.ts'
+import { compareNames, type Item } from '../lib/jellyfin/index.ts'
 import type { Movie } from './movies.ts'
+import { fold, words } from './search.ts'
 import type { Show } from './shows.ts'
 
 export type Title = Movie | Show

@@ -10,10 +10,10 @@
 // to the speakers, nothing changed) that the visualiser can listen to.
 
 import { streamed } from '../core/details.ts'
-import type { Jellyfin } from '../core/jellyfin.ts'
+import { CLIENT } from '../core/jellyflow.ts'
 import type { Track } from '../core/library.ts'
-import { musicProfile } from '../core/playback.ts'
-import { browserCaps } from './caps.ts'
+import { browserCaps } from '../lib/jellyfin/browser.ts'
+import { musicProfile, type Jellyfin } from '../lib/jellyfin/index.ts'
 import { app, store, stored } from './state.svelte.ts'
 import { Stream } from './stream.svelte.ts'
 
@@ -57,7 +57,7 @@ class Player {
 
   private audio = new Audio()
   /** What Jellyfin is told this browser plays */
-  private readonly profile = musicProfile(browserCaps())
+  private readonly profile = musicProfile(browserCaps(), CLIENT)
   /** Settles once the track's in the <audio>: true if it can play */
   private ready = Promise.resolve(false)
   /** The second to start the track at, until it's loaded: where it was before a reload */

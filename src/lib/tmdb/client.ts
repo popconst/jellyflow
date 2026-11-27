@@ -1,37 +1,41 @@
-// TMDB, read with the server's token: for the page (through /api/tmdb/…) and
-// for working out the Discover lists. Only the reading Discover needs is
-// allowed (the token isn't an open proxy); each answer is kept in the
-// database for as long as that kind of answer stays true; a few requests at a
-// time, waiting out TMDB's rate limit when it's hit.
-
-import type { Store } from './db.ts'
+// TMDB's API, read with a token (a server's, which the browser never sees):
+// only what's allowed is asked, so the server can pass its page's requests
+// through without being an open proxy; each answer is kept in a cache for as
+// long as that kind of answer stays true; the same question is asked once
+// however many ask it at once; a few requests at a time, waiting out TMDB's
+// rate limit when it's hit.
 
 const API = 'https://api.themoviedb.org/3'
-const HOUR = 3_600_000
-const DAY = 24 * HOUR
 /** Requests to TMDB at once */
 const AT_ONCE = 16
 
-/** What may be asked, and how long an answer is kept: lists change daily, who made a film doesn't */
-const ALLOWED: [RegExp, number][] = [
-  [/^\/(movie|tv|person)\/\d+$/, DAY],
-  [/^\/movie\/\d+\/credits$/, 30 * DAY],
-  [/^\/tv\/\d+\/aggregate_credits$/, 7 * DAY],
-  [/^\/(movie|tv)\/\d+\/(recommendations|similar|videos|watch\/providers|external_ids)$/, DAY],
-  [/^\/person\/\d+\/(combined_credits|movie_credits|tv_credits|external_ids)$/, DAY],
-  [/^\/discover\/(movie|tv)$/, 6 * HOUR],
-  [/^\/trending\/(all|movie|tv|person)\/(day|week)$/, 6 * HOUR],
-  [/^\/movie\/(now_playing|upcoming|popular|top_rated)$/, 6 * HOUR],
-  [/^\/tv\/(on_the_air|airing_today|popular|top_rated)$/, 6 * HOUR],
-  [/^\/search\/(multi|movie|tv|person)$/, HOUR],
-  [/^\/genre\/(movie|tv)\/list$/, 7 * DAY],
-]
+/** A kind of request that may be made (its path), and how long its answer is kept (ms) */
+export type Allowed = [path: RegExp, keep: number]
 
 /** How long an answer to `path` is kept; undefined if it may not be asked */
-export function keptFor(path: string): number | undefined {
-  return ALLOWED.find(([pattern]) => pattern.test(path))?.[1]
+export function keptFor(allowed: Allowed[], path: string): number | undefined {
+  return allowed.find(([pattern]) => pattern.test(path))?.[1]
 }
 
+/** Where TMDB's answers are kept between runs (a database; a Map will do) */
+export interface TmdbCache {
+  /** The answer kept for `request`, if it was fetched after `since` (ms) */
+  tmdb(request: string, since: number): string | undefined
+  /** Keeps `body` as the answer to `request`, fetched now */
+  keepTmdb(request: string, body: string): void
+}
+
+export interface TmdbOptions {
+  /** TMDB's API read access token (TMDB account → Settings → API) */
+  token: string
+  cache: TmdbCache
+  /** What may be asked, and how long each kind of answer is kept: anything else is refused (TmdbError 404) */
+  allowed: Allowed[]
+  /** A fetch of its own (tests') */
+  fetcher?: typeof fetch
+}
+
+/** A request's query: those undefined are left out */
 export type Query = Record<string, string | number | boolean | undefined>
 
 /** A request as it's kept: the path, then the query sorted (so the same question finds the same answer) */
@@ -45,6 +49,7 @@ export function requestKey(path: string, query: Query = {}): string {
   return q ? `${path}?${q}` : path
 }
 
+/** TMDB said no (its status), or what was asked isn't allowed (404) */
 export class TmdbError extends Error {
   readonly status: number
   constructor(status: number, message: string) {
@@ -53,32 +58,35 @@ export class TmdbError extends Error {
   }
 }
 
+/** TMDB's API, through the cache */
 export class Tmdb {
   private readonly token: string
-  private readonly store: Store
+  private readonly cache: TmdbCache
+  private readonly allowed: Allowed[]
   private readonly fetch: typeof fetch
   private running = 0
   private readonly waiting: (() => void)[] = []
   /** What's being asked now, so the same question isn't asked twice at once */
   private readonly asking = new Map<string, Promise<string>>()
 
-  constructor(token: string, store: Store, fetcher: typeof fetch = fetch) {
+  constructor({ token, cache, allowed, fetcher = fetch }: TmdbOptions) {
     this.token = token
-    this.store = store
+    this.cache = cache
+    this.allowed = allowed
     this.fetch = fetcher
   }
 
-  /** TMDB's JSON for `path` (as text), from the database while it's fresh */
+  /** TMDB's JSON for `path` (as text), from the cache while it's fresh */
   async text(path: string, query: Query = {}): Promise<string> {
-    const keep = keptFor(path)
+    const keep = keptFor(this.allowed, path)
     if (keep === undefined) throw new TmdbError(404, `Not something Discover asks TMDB: ${path}`)
     const request = requestKey(path, query)
-    const kept = this.store.tmdb(request, Date.now() - keep)
+    const kept = this.cache.tmdb(request, Date.now() - keep)
     if (kept !== undefined) return kept
     let asking = this.asking.get(request)
     if (!asking) {
       asking = this.limited(() => this.ask(request)).then((body) => {
-        this.store.keepTmdb(request, body)
+        this.cache.keepTmdb(request, body)
         return body
       })
       this.asking.set(request, asking)
@@ -87,6 +95,7 @@ export class Tmdb {
     return asking
   }
 
+  /** TMDB's answer to `path`, parsed */
   async get<T>(path: string, query: Query = {}): Promise<T> {
     return JSON.parse(await this.text(path, query)) as T
   }
@@ -108,6 +117,7 @@ export class Tmdb {
     }
   }
 
+  /** `work`, once fewer than AT_ONCE are running */
   private async limited<T>(work: () => Promise<T>): Promise<T> {
     while (this.running >= AT_ONCE) await new Promise<void>((r) => this.waiting.push(r))
     this.running++

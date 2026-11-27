@@ -1,12 +1,13 @@
 <!--
   Rows of posters, Netflix style, each a Cover Flow row (Row.svelte): what
-  Watch and Discover show. The row with the keys is bigger, its name big
-  above it and a caption under its middle poster; the next rows wait smaller
-  below; j and k (or scrolling) go from row to row (down from the last, the
-  view may have more: onend). Enter opens the middle poster's page: its row
-  comes forward, full size, and the page swings out beside the poster. Behind it all, dimly, the backdrop of what the row rests
-  on. Where each row was left is remembered. What the posters, captions,
-  marks and pages are is the view's.
+  jellyflow's Watch and Discover show. The row with the keys is bigger, its
+  name big above it and a caption under its middle poster; the next rows
+  wait smaller below; j and k (or scrolling) go from row to row (down from
+  the last, the view may have more: onend). Enter opens the middle poster's
+  page: its row comes forward, full size, and the page swings out beside the
+  poster. Behind it all, dimly, the backdrop of what the row rests on. Where
+  each row was left is remembered (in localStorage). What the posters,
+  captions, marks and pages are is the view's.
 -->
 <script module lang="ts">
   /** One row: its name over it, its posters */
@@ -22,9 +23,8 @@
 
 <script lang="ts" generics="T extends { id: string }">
   import { untrack, type Snippet } from 'svelte'
-  import { keyName } from '../core/keys.ts'
+  import { keyName, typing } from '../keys/index.ts'
   import Row, { FOCUS, layout, type Geometry } from './Row.svelte'
-  import { app, store, stored, typing } from './state.svelte.ts'
 
   /** A poster's width over its height */
   const ASPECT = 2 / 3
@@ -52,8 +52,8 @@
     rails: Rail<T>[]
     /** Where the rows were left is kept in localStorage under this */
     remember: string
-    /** The view is showing: the keys are its */
-    shown: boolean
+    /** The rows have the keys: their view is showing, and nothing is over it */
+    active: boolean
     /** The page beside the middle poster is open */
     open?: boolean
     /** The row with the keys, by key */
@@ -85,7 +85,7 @@
   let {
     rails,
     remember,
-    shown,
+    active,
     open = $bindable(false),
     focusKey = $bindable(),
     url,
@@ -103,12 +103,14 @@
     children,
   }: Props = $props()
 
+  /** Where the rows were left, as it's kept */
   interface Saved {
+    /** The row with the keys, by its key */
     shelf?: string | undefined
     /** Each row's item, by the row's key */
     at?: Record<string, string>
   }
-  const saved = untrack(() => stored<Saved>(remember)) ?? {}
+  const saved = untrack(load) ?? {}
   /** Where each row was: rows taken off the page (out of sight) come back there */
   const at: Record<string, string> = { ...saved.at }
   if (focusKey === undefined) focusKey = saved.shelf
@@ -151,8 +153,26 @@
 
   // where the rows rest is remembered, for the next visit
   $effect(() => {
-    if (settled && rail && !rail.passing) store(remember, { shelf: rail.key, at } satisfies Saved)
+    if (settled && rail && !rail.passing) keep({ shelf: rail.key, at })
   })
+
+  /** Where the rows were left last time (none in a private window: they start at the top) */
+  function load(): Saved | undefined {
+    try {
+      const value = localStorage.getItem(remember)
+      return value ? (JSON.parse(value) as Saved) : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  function keep(where: Saved): void {
+    try {
+      localStorage.setItem(remember, JSON.stringify(where))
+    } catch {
+      // private window: nothing is remembered, everything still works
+    }
+  }
 
   // the view's size sets the rows' (not while hidden, at no size at all); scrolling up and down goes from row to row
   $effect(() => {
@@ -291,7 +311,7 @@
   }
 
   function onkeydown(e: KeyboardEvent): void {
-    if (!shown || typing(e) || e.defaultPrevented || app.help) return
+    if (!active || typing(e) || e.defaultPrevented) return
     const key = keyName(e)
     if (!key) return
     const row = rail && rows[rail.key]

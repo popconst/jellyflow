@@ -56,15 +56,16 @@ shares the same core.
   everything below, the wishlist and search too, is of the one shown.
 - **Year by year:** this year and the three before at first. Down from the
   last row, the year before it is asked for, films and series at once, so
-  the other tab has it too: one year at a time. Up to 100 in a row. An older year is kept on
-  the server once worked out, and comes with the rest next time.
-- **The best series** of each year, with 3 seasons
-  out or more: each in the year it was last on, the year it ended or (still
-  running) its latest season's. Of TMDB's most voted for that year (score
-  7.5 or more from at least 200 votes), the best scored first; how many
-  seasons, and whether it ended, under each.
-- **The best films** of each year: TMDB score 7.2 or
-  more from at least 200 votes: of the most popular, the best scored first.
+  the other tab has it too: one year at a time. Up to 100 in a row. An
+  older year is kept on the server once worked out, and comes with the rest
+  next time.
+- **The best series** of each year, with 3 seasons out or more: each in the
+  year it was last on, the year it ended or (still running) its latest
+  season's. Of TMDB's most voted for that year (score 7.5 or more from at
+  least 200 votes), the best scored first; how many seasons, and whether it
+  ended, under each.
+- **The best films** of each year: TMDB score 7.2 or more from at least 200
+  votes: of the most popular, the best scored first.
 - The lists are worked out when the server starts, and their posters
   fetched ahead and kept on the server, so Discover opens at once and a
   fast scroll along a row doesn't wait for TMDB.
@@ -82,8 +83,9 @@ shares the same core.
   shuts.
 - **Search** (`/`): any film or series on TMDB, by title, to look at or
   wish for.
-- **Optional:** it needs jellyflow's server with a TMDB token ([below](#discover-and-the-wishlist-optional)).
-  Without one there's no Discover, and nothing goes to TMDB.
+- **Optional:** it needs jellyflow's server with a TMDB token
+  ([below](#discover-and-the-wishlist-optional)). Without one there's no
+  Discover, and nothing goes to TMDB.
 
 ## Listen
 
@@ -149,28 +151,25 @@ shares the same core.
 ```sh
 git clone https://github.com/popconst/jellyflow && cd jellyflow
 npm install
-npm run dev                    # http://localhost:5173, reloads as you edit
-```
-
-Log in with your Jellyfin server's address, user and password. To start the
-login screen with your server filled in:
-
-```sh
-cp .env.example .env.local     # then set VITE_JELLYFIN_URL
-```
-
-The page talks to Jellyfin straight from the browser, so Jellyfin's CORS has
-to allow it. Jellyfin allows any origin by default.
-
-## Run it as a service
-
-```sh
 npm run build && npm start     # http://127.0.0.1:4173
 ```
 
-`HOST` and `PORT` change where it listens. `server.ts` serves the built
-files, and under `/api` what Jellyfin can't do: Discover and the wishlist
-(below). It has no dependencies. To keep it running with
+Open it and log in with your Jellyfin server's address, user and password.
+Watch and Listen work at once; Discover needs a TMDB token
+([below](#discover-and-the-wishlist-optional)).
+
+- **The page talks to Jellyfin straight from the browser,** so Jellyfin's
+  CORS has to allow it. Jellyfin allows any origin by default.
+- **To start the login screen with your server filled in:**
+  `cp .env.example .env.local`, set `VITE_JELLYFIN_URL`, and build again.
+- **To work on it,** `npm run dev` instead (see [Develop](#develop)).
+
+## Run it as a service
+
+`npm start` runs `server.ts`: it serves the built files, and under `/api`
+what Jellyfin can't do: Discover and the wishlist (below). It has no
+dependencies. `HOST` and `PORT` change where it listens (`.env.example`
+lists all it reads). To keep it running with
 [pm2](https://pm2.keymetrics.io):
 
 ```sh
@@ -223,17 +222,17 @@ wishlist, and nobody without a login gets anything.
 
 The lists Discover shows for now: the best series of each year (this one and
 the three before at first, older ones as they're asked for), in the year each
-was last on (3+ seasons out, TMDB score 7.5+ from
-200+ votes; no news, reality, soaps or talk shows), and the best films of
-those years (TMDB score 7.2+ from 200+ votes). The server can work out more,
-from your library: new and coming from the directors and actors it's most
-made of (weighed by what you watched), because you watched (your last
-three), what's next for your series, in cinemas, coming soon and trending
-(`ALL` in `server/discover.ts`; `SHOWN` is what's on). The latest four years'
-lists are worked out again every 12 hours, in the background (the ones kept
-are shown meanwhile); an older year's are kept as they
-are (`?refresh=1` with its `?year=` works them out again). TMDB's answers
-are kept from hours (lists) to a month (a film's credits).
+was last on (3+ seasons out, TMDB score 7.5+ from 200+ votes; no news,
+reality, soaps or talk shows), and the best films of those years (TMDB score
+7.2+ from 200+ votes). The server can work out more, from your library: new
+and coming from the directors and actors it's most made of (weighed by what
+you watched), because you watched (your last three), what's next for your
+series, in cinemas, coming soon and trending (`ALL` in `server/discover.ts`;
+`SHOWN` is what's on). The latest four years' lists are worked out again
+every 12 hours, in the background (the ones kept are shown meanwhile); an
+older year's are kept as they are (`?refresh=1` with its `?year=` works them
+out again). TMDB's answers are kept from hours (lists) to a month (a film's
+credits: `READS` in `server/discover.ts`).
 
 ## Keys
 
@@ -352,7 +351,7 @@ are kept from hours (lists) to a month (a film's credits).
     jellyflow's display settings, so every browser you log in from leaves
     it off. Watching it again brings it back.
 - **Films and episodes** are streamed the way Jellyfin's own apps ask for
-  them, with a device profile (`src/core/playback.ts`).
+  them, with a device profile (`src/lib/jellyfin/profiles.ts`).
   - **Picture:** the browser says what it plays, and Jellyfin repackages
     the MKV into HLS (fragmented MP4) with the picture copied untouched:
     H.264, HEVC 10-bit, HDR10, and Dolby Vision with an HDR10 picture under
@@ -442,25 +441,42 @@ server, unless you give that server a TMDB token (Discover).
   details' links open an album on Discogs, Wikipedia or MusicBrainz when
   you ask for them.
 
-## Layout
+## How it's built
+
+The page is Svelte 5 (runes) and strict TypeScript, built by Vite. The
+server is plain TypeScript that Node runs as it is (type stripping), with no
+dependencies: `node:http` and `node:sqlite`.
 
 ```
-src/core/   The Jellyfin client and everything that doesn't need a page:
-            albums and search, album details, vim key sequences, the row's
-            motion; films, series and their rows, what a title's page
-            offers to play; the device profiles (films and music) and
-            subtitles. Plain TypeScript that Node runs as it is (type
-            stripping), to be shared with the terminal app.
-            tsconfig.core.json checks it without DOM types.
-src/web/    The Svelte 5 app: Watch and Discover (the same rows of posters,
-            a title's page), Cover Flow, Folders, the players and their
-            streams, the spectrum.
-server.ts   serves dist/, and the API under /api (no dependencies)
-server/     the API: who's asking (Jellyfin says), TMDB through the server's
-            token, the Discover lists, the wishlist, TMDB's images kept on
-            disk; SQLite (node:sqlite).
-            tsconfig.server.json checks it without DOM types.
+src/lib/        Reusable pieces that import nothing of the app. Each folder's
+                index.ts says what it does and how to use it; each could be a
+                package of its own.
+  coverflow/    Svelte: the Cover Flow row (Row), rows of them, Netflix style
+                (Rails), a poster that shows once it's loaded, a mark for its
+                corner; and the row's motion on its own, without the DOM.
+  jellyfin/     The Jellyfin client: logging in, items, images, playing and
+                reporting; the device profiles that keep the file as it is
+                wherever the browser plays it; a film's audio and subtitle
+                tracks. browser.ts asks the browser what it plays.
+  tmdb/         For Node: TMDB's API behind an allowlist, its answers kept in
+                a cache and its rate limit waited out; its images kept on disk.
+  keys/         vim key names and sequences (counts, gg).
+  vtt/          WebVTT subtitles, read into cues.
+src/core/       jellyflow's own logic, with no framework: albums and their
+                search, an album's details; films, series and their rows
+                (Continue Watching, the genre rows), what a title's page
+                offers to play; Discover's suggestions, shared with the server.
+src/web/        The Svelte app: Watch and Discover (Rails, a title's page),
+                Cover Flow and Folders, the players and their streams, the
+                spectrum.
+server.ts       Serves dist/, and the API under /api.
+server/         The API: who's asking (Jellyfin says), the Discover lists
+                worked out from TMDB, the wishlist; SQLite.
 ```
+
+`tsconfig.core.json` checks `src/core` and `src/lib` again without the DOM,
+so they stay usable from Node and the terminal app; `tsconfig.server.json`
+checks the server. Tests sit beside what they test (`*.test.ts`).
 
 The runtime dependencies are audioMotion-analyzer (the spectrum, with no
 dependencies of its own) and hls.js (streams, loaded only when one needs
@@ -469,24 +485,32 @@ it). Svelte, Vite and TypeScript are dev dependencies.
 ## Develop
 
 ```sh
-npm run dev      # Vite, with hot reload; /api goes to npm start's server
-npm run check    # svelte-check (strict, warnings fail) + the core and the server without the DOM
-npm test         # node --test on src/core and server/
+npm run dev      # Vite on http://localhost:5173, with hot reload; /api goes to npm start's server
+npm run check    # svelte-check (strict, warnings fail) + the core, the libs and the server without the DOM
+npm test         # node --test: src/lib, src/core and server/
 npm run build    # into dist/
 ```
+
+Discover needs jellyflow's server while you work on the page: `npm start`
+beside `npm run dev` (Vite passes `/api` to it; `API=http://host:port npm
+run dev` for one elsewhere).
 
 With `npm run dev`, `localStorage.setItem('jellyflow.debug', 'hls')` in the
 console makes hls.js log what it loads and decides, for a stream that won't
 start.
 
-CI runs `check`, `test` and `build` on every push and pull request. Issues
-and pull requests are welcome. Keep it light: new runtime dependencies need
-a good reason.
+CI runs `check`, `test` and `build` on every pull request and every push to
+`main`. Issues and pull requests are welcome. Keep it light: new runtime
+dependencies need a good reason. The code keeps a few habits:
+- comments say plainly what a thing is and why;
+- only TypeScript that erases (no enums, namespaces or parameter
+  properties; imports with their `.ts`), so Node runs the server as it is;
+- `src/lib` imports nothing of the app: what's jellyflow's is passed in.
 
 ## Next: the terminal
 
-The terminal app will be `src/tui/`, run by Node, on the same `src/core`. Its
-pieces:
+The terminal app will be `src/tui/`, run by Node, on the same `src/core` and
+`src/lib` (the Jellyfin client, the keys, the row's motion). Its pieces:
 - the same views drawn with kitty graphics (like coverflow);
 - playback through `mpv --input-ipc-server`, asking Jellyfin for streams
   the way the web app does.

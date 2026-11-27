@@ -1,6 +1,6 @@
 <!--
-  A film's or a series' poster (2:3), Jellyfin's or TMDB's; its title on a
-  plain card when it has none. Shown once it's loaded, not drawn in top-down
+  A film's or a series' poster (2:3), from any URL; its title on a plain
+  card when it has none. Shown once it's loaded, not drawn in top-down
   as it arrives (a fast scroll asks for many at once, and they come slowly);
   till then, the plain card without the title. A bigger size asked for later
   replaces it once that's loaded too (the browser keeps the first till then).

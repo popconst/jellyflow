@@ -9,7 +9,8 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte'
   import { duration } from '../core/details.ts'
-  import type { MediaSource as Source } from '../core/jellyfin.ts'
+  import { CLIENT } from '../core/jellyflow.ts'
+  import { browserCaps } from '../lib/jellyfin/browser.ts'
   import {
     audioTracks,
     conversion,
@@ -19,11 +20,11 @@
     pickSubtitles,
     qualities,
     subtitleTracks,
+    type MediaSource as Source,
+    type MediaTrack,
     type Quality,
-    type Track,
-  } from '../core/playback.ts'
-  import { parseVtt, type Cue } from '../core/vtt.ts'
-  import { browserCaps } from './caps.ts'
+  } from '../lib/jellyfin/index.ts'
+  import { parseVtt, type Cue } from '../lib/vtt/index.ts'
   import Captions from './Captions.svelte'
   import { coverColours, seekFill, stops } from './palette.ts'
   import PlayerMenu from './PlayerMenu.svelte'
@@ -72,10 +73,10 @@
 
   const audios = $derived(audioTracks(source ?? file))
   const subs = $derived(subtitleTracks(source ?? file))
-  let audio = $state.raw<Track | undefined>()
-  let subtitles = $state.raw<Track | undefined>()
+  let audio = $state.raw<MediaTrack | undefined>()
+  let subtitles = $state.raw<MediaTrack | undefined>()
   /** The subtitles last on, for c to bring back */
-  let lastSubtitles: Track | undefined
+  let lastSubtitles: MediaTrack | undefined
   let cues = $state.raw<Cue[]>([])
   let quality = $state.raw(pickQuality(choices, watch.quality))
 
@@ -127,7 +128,7 @@
     if (!stream || !video) return
     waiting = true
     const ok = await stream.open(video, at, {
-      profile: deviceProfile(caps, quality),
+      profile: deviceProfile(caps, CLIENT, quality),
       audio: audio?.index,
       burnIn: subtitles?.burnIn ? subtitles.index : undefined,
     })
@@ -188,7 +189,7 @@
     else close()
   }
 
-  async function loadCues(t: Track | undefined): Promise<void> {
+  async function loadCues(t: MediaTrack | undefined): Promise<void> {
     cues = []
     if (!t || t.burnIn || !client || !source) return
     const s = source.MediaStreams?.find((x) => x.Index === t.index)
@@ -202,7 +203,7 @@
 
   // -- choices
 
-  function chooseAudio(t: Track): void {
+  function chooseAudio(t: MediaTrack): void {
     menu = false
     watch.prefer({ audio: t.language })
     if (t.index === audio?.index) return
@@ -221,7 +222,7 @@
     say(q.label)
   }
 
-  function chooseSubtitles(t: Track | undefined): void {
+  function chooseSubtitles(t: MediaTrack | undefined): void {
     menu = false
     watch.prefer({ subtitles: t?.language })
     if (t?.index === subtitles?.index) return
@@ -506,7 +507,6 @@
   {#if waiting && !error}<div class="spinner" aria-label="Loading"></div>{/if}
 
   {#if note}<div class="note">{note}</div>{/if}
-
 
   {#if flash}
     {#key flash.key}

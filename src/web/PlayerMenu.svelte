@@ -5,20 +5,20 @@
   converted, and to what).
 -->
 <script lang="ts">
-  import type { Conversion, Quality, Track } from '../core/playback.ts'
+  import type { Conversion, MediaTrack, Quality } from '../lib/jellyfin/index.ts'
 
   interface Props {
     qualities: Quality[]
     quality: Quality
-    audios: Track[]
-    audio: Track | undefined
-    subtitles: Track[]
-    chosen: Track | undefined
+    audios: MediaTrack[]
+    audio: MediaTrack | undefined
+    subtitles: MediaTrack[]
+    chosen: MediaTrack | undefined
     /** What Jellyfin does to the file, once it's said */
     sent: Conversion | undefined
     onquality: (q: Quality) => void
-    onaudio: (t: Track) => void
-    onsubtitles: (t: Track | undefined) => void
+    onaudio: (t: MediaTrack) => void
+    onsubtitles: (t: MediaTrack | undefined) => void
   }
   let { qualities, quality, audios, audio, subtitles, chosen, sent, onquality, onaudio, onsubtitles }: Props = $props()
 

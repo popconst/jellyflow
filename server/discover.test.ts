@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { Store } from './db.ts'
-import { ALL, discover, newWorkOf, peopleOf, SHOWN } from './discover.ts'
-import { daysFromNow, fakeTmdb, tmdbAnswers } from './fakes.ts'
+import { keptFor } from '../src/lib/tmdb/index.ts'
+import { ALL, discover, newWorkOf, peopleOf, READS, SHOWN } from './discover.ts'
+import { daysFromNow, fakeTmdb, fakeTmdbClient, tmdbAnswers } from './fakes.ts'
 import type { Library, Owned } from './library.ts'
-import { Tmdb } from './tmdb.ts'
 
 const dune: Owned = { kind: 'movie', tmdbId: 438631, id: 'j-dune', title: 'Dune', played: true }
 const severance: Owned = { kind: 'tv', tmdbId: 95396, id: 'j-sev', title: 'Severance', played: true }
@@ -16,6 +15,16 @@ const library: Library = {
   titles: [dune, severance],
   recent: [severance, dune],
 }
+
+test('only what Discover reads may be asked of TMDB; who made a film is kept longer than a list', () => {
+  for (const path of ['/movie/603', '/tv/1399/aggregate_credits', '/person/1/combined_credits', '/discover/movie', '/search/multi', '/trending/all/week']) {
+    assert.ok(keptFor(READS, path), path)
+  }
+  for (const path of ['/account', '/movie/603/rating', '/authentication/token/new', '/movie/603/../account', '/list/1', '/movie/abc']) {
+    assert.equal(keptFor(READS, path), undefined, path)
+  }
+  assert.ok((keptFor(READS, '/movie/603/credits') ?? 0) > (keptFor(READS, '/discover/movie') ?? 0))
+})
 
 test("peopleOf: a film's director weighs most, then its leads; twice for what was watched", () => {
   const unwatched = { ...dune, played: false }
@@ -76,7 +85,7 @@ test('newWorkOf: directed, or a part played, out lately or coming; not as themse
 })
 
 test('discover: what Discover shows for now, the best series and films of this year and the three before (the empty left out)', async () => {
-  const tmdb = new Tmdb('token', new Store(':memory:'), fakeTmdb().fetcher)
+  const tmdb = fakeTmdbClient()
   const lists = await discover(tmdb, library)
   const year = new Date().getFullYear()
   assert.deepEqual(
@@ -91,7 +100,7 @@ test('discover: what Discover shows for now, the best series and films of this y
 
 test("discover: a year's best series, 3 seasons out or more, in the year they were last on, the best scored first", async () => {
   const fake = fakeTmdb()
-  const tmdb = new Tmdb('token', new Store(':memory:'), fake.fetcher)
+  const tmdb = fakeTmdbClient(fake)
   const lists = await discover(tmdb, library, ['series'])
   const year = new Date().getFullYear()
   const list = (y: number) => lists.find((l) => l.key === `series:${y}`)?.items.map((s) => [s.title, s.kind, s.why]) ?? []
@@ -114,7 +123,7 @@ test("discover: a year's best series, 3 seasons out or more, in the year they we
 
 test('discover: an older year, asked for alone: its best series and films', async () => {
   const fake = fakeTmdb()
-  const tmdb = new Tmdb('token', new Store(':memory:'), fake.fetcher)
+  const tmdb = fakeTmdbClient(fake)
   const lists = await discover(tmdb, library, SHOWN, { years: [2013] })
   assert.deepEqual(
     lists.map((l) => [l.key, l.name]),
@@ -130,7 +139,7 @@ test('discover: an older year, asked for alone: its best series and films', asyn
 
 test('discover: every kind of list, in order, without what the library has', async (t) => {
   t.mock.method(console, 'error', () => undefined)
-  const tmdb = new Tmdb('token', new Store(':memory:'), fakeTmdb().fetcher)
+  const tmdb = fakeTmdbClient()
   const lists = await discover(tmdb, library, ALL)
   const year = new Date().getFullYear()
   assert.deepEqual(
@@ -171,7 +180,7 @@ test("discover: a list TMDB can't answer is left out, the rest come", async (t) 
   const errors = t.mock.method(console, 'error', () => undefined)
   const answers = tmdbAnswers()
   delete answers['/movie/now_playing']
-  const tmdb = new Tmdb('token', new Store(':memory:'), fakeTmdb(answers).fetcher)
+  const tmdb = fakeTmdbClient(fakeTmdb(answers))
   const keys = (await discover(tmdb, library, ALL)).map((l) => l.key)
   assert.ok(!keys.includes('cinema'))
   assert.ok(keys.includes('upcoming'))
@@ -179,7 +188,7 @@ test("discover: a list TMDB can't answer is left out, the rest come", async (t) 
 })
 
 test('discover: an empty library still has the lists for everyone', async () => {
-  const tmdb = new Tmdb('token', new Store(':memory:'), fakeTmdb().fetcher)
+  const tmdb = fakeTmdbClient()
   const keys = (await discover(tmdb, { owned: new Map(), titles: [], recent: [] }, ALL)).map((l) => l.key)
   assert.deepEqual(keys.slice(-3), ['cinema', 'upcoming', 'trending'])
   assert.ok(!keys.includes('people') && !keys.includes('shows'))

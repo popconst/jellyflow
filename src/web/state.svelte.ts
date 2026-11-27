@@ -3,13 +3,15 @@
 // titles are videos.svelte.ts'), the status line, and a live connection to
 // Jellyfin that reads them again when the library changes.
 
-import { Jellyfin, login, SessionExpired, type Device, type Item, type Session } from '../core/jellyfin.ts'
+import { CLIENT, VERSION } from '../core/jellyflow.ts'
 import { albumsFrom, TrackTitles, type Album } from '../core/library.ts'
+import { Jellyfin, login, SessionExpired, type Device, type Item, type Session } from '../lib/jellyfin/index.ts'
 
 /** Watch (films and series), Discover (beyond them), or Listen: Cover Flow or Folders */
 export type View = 'watch' | 'discover' | 'flow' | 'folders'
 export type Section = 'watch' | 'discover' | 'listen'
 
+/** What's kept in localStorage under `key` (as JSON); undefined if nothing is, or it can't be read */
 export function stored<T>(key: string): T | undefined {
   try {
     const value = localStorage.getItem(key)
@@ -19,6 +21,7 @@ export function stored<T>(key: string): T | undefined {
   }
 }
 
+/** Keeps `value` in localStorage under `key`; undefined forgets it */
 export function store(key: string, value: unknown): void {
   try {
     if (value === undefined) localStorage.removeItem(key)
@@ -28,10 +31,11 @@ export function store(key: string, value: unknown): void {
   }
 }
 
+/** This browser, as Jellyfin lists it: its id made once and kept */
 function device(): Device {
   const id = stored<string>('jellyflow.device') ?? crypto.randomUUID()
   store('jellyflow.device', id)
-  return { id, name: 'jellyflow web' }
+  return { client: CLIENT, version: VERSION, id, name: 'jellyflow web' }
 }
 
 /** After a library change, how long it has to stay quiet before the albums are read again */
@@ -266,9 +270,3 @@ export const app = new App()
 
 /** The server the login screen starts with: the last one used, else the configured one */
 export const defaultServer: string = stored<string>('jellyflow.server') ?? import.meta.env['VITE_JELLYFIN_URL'] ?? ''
-
-/** Keys typed into a text field are the field's */
-export function typing(e: KeyboardEvent): boolean {
-  const target = e.target as HTMLElement | null
-  return target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA'
-}

@@ -1,5 +1,9 @@
-// WebVTT subtitles, read into cues for the player to draw itself (styled its
-// own way, and with nothing left to the browser's track handling).
+// WebVTT subtitles, read into cues for a player to draw itself (styled its
+// own way, and with nothing left to the browser's track handling). Plain
+// TypeScript, no DOM.
+//
+//   const cues = parseVtt(await (await fetch(url)).text())
+//   const lines = linesAt(cues, video.currentTime)   // what to show now
 
 export interface Cue {
   /** Seconds */

@@ -3,7 +3,7 @@
 // allows it); this hands out its files, and under /api it answers what
 // Jellyfin can't: Discover and the wishlist (server/api.ts). Set up by the
 // environment (server/config.ts): HOST and PORT, JELLYFIN_URL, the TMDB
-// token, where the database goes.
+// token, where the database and TMDB's images go.
 
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
@@ -13,9 +13,9 @@ import { fileURLToPath } from 'node:url'
 import { Api } from './server/api.ts'
 import { config } from './server/config.ts'
 import { Store } from './server/db.ts'
-import { Images } from './server/images.ts'
-import { Tmdb } from './server/tmdb.ts'
+import { READS } from './server/discover.ts'
 import { Users } from './server/users.ts'
+import { Images, Tmdb } from './src/lib/tmdb/index.ts'
 
 const settings = config()
 const root = fileURLToPath(new URL('./dist/', import.meta.url))
@@ -25,7 +25,7 @@ const store = new Store(settings.database)
 const api = new Api({
   store,
   users: new Users(settings.jellyfin),
-  tmdb: settings.tmdbToken ? new Tmdb(settings.tmdbToken, store) : undefined,
+  tmdb: settings.tmdbToken ? new Tmdb({ token: settings.tmdbToken, cache: store, allowed: READS }) : undefined,
   images: new Images(settings.images),
 })
 

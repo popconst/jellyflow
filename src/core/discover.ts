@@ -48,7 +48,10 @@ export interface DiscoverList {
 }
 
 /** With fewer votes than this, TMDB's score says little, so none is shown */
-export const MIN_VOTES = 50
+const MIN_VOTES = 50
+
+/** The oldest year Discover goes back to, a year at a time */
+export const FIRST_YEAR = 1900
 
 /** A film or a series as TMDB's lists, details and credits give it (the fields used) */
 export interface TmdbTitle {

@@ -1,12 +1,12 @@
 <!--
   Cover Flow's row: covers (album covers, film posters) side by side on a
   floor, the one in the middle 20% bigger and its neighbours turned towards
-  it, each reflected on the floor. It moves with core/motion.ts: a tap glides
+  it, each reflected on the floor. It moves with motion.ts: a tap glides
   one cover; holding a key runs from the keyboard's first repeat, ever
   faster, and stops on the next cover when let go; scrolling follows the
   trackpad. A page can swing out beside the middle cover, hinged on its
   edge, the row moving over to make room. What the covers are and what's on
-  the page are the view's (Coverflow, Watch).
+  the page are the caller's (jellyflow's Cover Flow, and Rails.svelte).
 -->
 <script module lang="ts">
   /** The middle cover's scale */
@@ -41,8 +41,8 @@
   import { untrack, type Snippet } from 'svelte'
   import { cubicOut } from 'svelte/easing'
   import { SvelteSet } from 'svelte/reactivity'
-  import { keyName } from '../core/keys.ts'
-  import { Motion } from '../core/motion.ts'
+  import { keyName } from '../keys/index.ts'
+  import { Motion } from './motion.ts'
 
   /** The row's geometry, in units of a cover's width: the first side cover's place (each next one's is `step`) */
   const GAP = 0.8

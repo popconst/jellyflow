@@ -7,14 +7,14 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { duration, links } from '../core/details.ts'
-  import { keyName } from '../core/keys.ts'
   import { filter as find, toTrack, type Album, type Found, type Track } from '../core/library.ts'
+  import { FOCUS, Row } from '../lib/coverflow/index.ts'
+  import { keyName, typing } from '../lib/keys/index.ts'
   import Cover from './Cover.svelte'
   import Details from './Details.svelte'
   import { player } from './player.svelte.ts'
-  import Row, { FOCUS } from './Row.svelte'
   import SearchLine from './SearchLine.svelte'
-  import { app, store, stored, typing } from './state.svelte.ts'
+  import { app, store, stored } from './state.svelte.ts'
   import TrackList from './TrackList.svelte'
   import Visualizer from './Visualizer.svelte'
 
@@ -92,7 +92,6 @@
     const id = albums[place]?.id
     if (id) store('jellyflow.flow', { id, filter: applied })
   })
-
 
   /** The row for the query, at album `keep` if it's in it, else the first match (no glide) */
   function applyFilter(keep: string | undefined): void {
@@ -644,7 +643,7 @@
     border-radius: 10px;
     z-index: 3000;
   }
-  /* the filter and the place in the row, floating over the floor */
+  /* the spectrum of what's playing, glowing on the floor under the covers */
   .glow {
     position: absolute;
     left: 0;

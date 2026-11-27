@@ -6,10 +6,10 @@
 -->
 <script lang="ts">
   import { tick } from 'svelte'
-  import type { Item } from '../core/jellyfin.ts'
   import { filmChoices, seriesChoice, type Choice } from '../core/page.ts'
   import { seasonsOf, upNext, type Episode } from '../core/shows.ts'
   import { facts, imdbUrl, left, resumable, runtime, startAt, status, type Title } from '../core/titles.ts'
+  import type { Item } from '../lib/jellyfin/index.ts'
   import About from './About.svelte'
   import Cast, { type Person } from './Cast.svelte'
   import Disc from './Disc.svelte'
@@ -201,7 +201,6 @@
   /** Its page on IMDb, if Jellyfin knows it (i opens it) */
   const imdb = $derived(imdbUrl(details?.ProviderIds?.['Imdb']))
 </script>
-
 
 <Sheet {art} name={title.title} facts={facts(title)} score={title.score} {more} genres={title.genres} links={imdb ? [{ label: 'IMDb', url: imdb, key: 'i' }] : []}>
   {#if title.kind === 'movie'}

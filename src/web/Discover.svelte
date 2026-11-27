@@ -12,36 +12,30 @@
 <script lang="ts">
   import { untrack } from 'svelte'
   import { byScore, type Kind } from '../core/discover.ts'
+  import { FOLD, Mark, Poster, Rails, type Rail } from '../lib/coverflow/index.ts'
   import Caption from './Caption.svelte'
   import { discover, pick, type Pick } from './discover.svelte.ts'
   import DiscoverPage from './DiscoverPage.svelte'
-  import Mark from './Mark.svelte'
-  import Poster from './Poster.svelte'
-  import Rails, { type Rail } from './Rails.svelte'
-  import { FOLD } from './Row.svelte'
+  import { Note, Search } from './search.svelte.ts'
   import SearchLine from './SearchLine.svelte'
-  import { app, store, stored } from './state.svelte.ts'
+  import { app } from './state.svelte.ts'
 
-  /** The search on, kept across reloads */
-  const SEARCH = 'jellyflow.discoverSearch'
   /** TMDB is asked once typing pauses this long (ms) */
   const PAUSE = 250
 
   let rails = $state<Rails<Pick>>()
-  let filmPage = $state<DiscoverPage>()
+  let titlePage = $state<DiscoverPage>()
   let open = $state(false)
-  let note = $state('')
-  let noteTimer: ReturnType<typeof setTimeout> | undefined
-  /** Searching: what was on before, for Esc */
-  let searching = $state<{ prev: string } | undefined>()
-  let query = $state(stored<string>(SEARCH) ?? '')
-  let applied = $state(stored<string>(SEARCH) ?? '')
+  /** The search on, kept across reloads */
+  const search = new Search('jellyflow.discoverSearch')
+  /** A word in the line at the bottom for a while */
+  const note = new Note(4000)
   /** What TMDB found last, and for what (kept on show while the next is asked) */
   let found = $state.raw<{ query: string; items: Pick[] } | undefined>()
   /** The last one marked not interested, where it was, and whether it was wished for: u puts it back */
   let removed = $state.raw<{ pick: Pick; rail: string; wished: boolean } | undefined>()
 
-  const asked = $derived(applied.trim())
+  const asked = $derived(search.applied.trim())
   const finding = $derived(asked !== '' && found?.query !== asked)
   const kind = $derived(discover.kind)
   /** The kind shown, films or series */
@@ -101,7 +95,7 @@
         (e: unknown) => {
           if (!live) return
           found = { query: q, items: [] }
-          say(e instanceof Error ? e.message : String(e))
+          note.say(e instanceof Error ? e.message : String(e))
         },
       )
     }, PAUSE)
@@ -111,51 +105,12 @@
     }
   })
 
-  /** A word in the line at the bottom for a while */
-  function say(message: string): void {
-    note = message
-    clearTimeout(noteTimer)
-    noteTimer = setTimeout(() => (note = ''), 4000)
-  }
-
   /** w: on the wishlist, or off it */
   async function wish(p: Pick | undefined): Promise<void> {
     if (!p) return
     const on = !discover.wished.has(p.ref)
     await discover.toggle(p)
-    say(on ? `“${p.title}” is on your wishlist` : `“${p.title}” is off your wishlist`)
-  }
-
-  function search(again: string): void {
-    applied = again
-    store(SEARCH, again)
-  }
-
-  // the search's keys (SearchLine)
-
-  function clearSearch(): void {
-    query = ''
-    search('')
-  }
-
-  /** Esc: the rows as they were */
-  function cancelSearch(): void {
-    if (!searching) return
-    const { prev } = searching
-    searching = undefined
-    query = prev
-    search(prev)
-  }
-
-  /** Enter: browse what was found; nothing found is the same as Esc */
-  function doneSearch(): void {
-    if (!searching) return
-    const { prev } = searching
-    searching = undefined
-    if (!finding && !foundHere.length) {
-      query = prev
-      search(prev)
-    }
+    note.say(on ? `“${p.title}” is on your wishlist` : `“${p.title}” is off your wishlist`)
   }
 
   /**
@@ -170,12 +125,12 @@
     if (discover.dismissed.has(p.ref)) {
       removed = undefined
       void discover.undismiss(p, false)
-      say(`“${p.title}” is back in Discover`)
+      note.say(`“${p.title}” is back in Discover`)
       return false
     }
     removed = { pick: p, rail: at.rail.key, wished: discover.wished.has(p.ref) }
     void discover.dismiss(p)
-    say(`Not interested in “${p.title}” · u puts it back`)
+    note.say(`Not interested in “${p.title}” · u puts it back`)
     return true
   }
 
@@ -186,7 +141,7 @@
     void discover.undismiss(r.pick, r.wished)
     discover.setKind(r.pick.kind)
     rails?.show(r.wished ? `wishlist:${r.pick.kind}` : r.rail, r.pick.id)
-    say(`“${r.pick.title}” is back`)
+    note.say(`“${r.pick.title}” is back`)
   }
 
   /** Down from the last row: the year before the oldest one's (both kinds), one year at a time; said if it has nothing new of this kind */
@@ -194,7 +149,7 @@
     if (asked) return
     void discover.more().then((got) => {
       if (got && !got.lists.some((l) => l.items.some((s) => s.kind === discover.kind && !done(pick(s)))))
-        say(`Nothing new from ${got.year} · down again for ${got.year - 1}`)
+        note.say(`Nothing new from ${got.year} · down again for ${got.year - 1}`)
     })
   }
 
@@ -213,19 +168,18 @@
         undo()
         return true
       case '/':
-        query = applied
-        searching = { prev: applied }
+        search.start()
         return true
       case '<Esc>':
         if (!asked) return false
-        clearSearch()
+        search.clear()
         return true
       default:
         return false
     }
   }
 
-  /** An open page's keys: w or Enter, the wishlist; x, not interested (and shut); i, the title on IMDb; Esc, q, k or Backspace shut it (k as on Watch's, up from the top); the rest are the row's (on to the next) */
+  /** An open page's keys: w or Enter, the wishlist; x, not interested (and shut); i, the title on IMDb; Esc, q, k, ↑ or Backspace shut it (k and ↑ as on Watch's, up from the top); the rest are the row's (on to the next) */
   function pageKey(key: string): 'handled' | 'close' | 'pass' {
     switch (key) {
       case 'w':
@@ -235,7 +189,7 @@
       case 'x':
         return dismiss() ? 'close' : 'handled'
       case 'i': {
-        const imdb = filmPage?.imdbPage()
+        const imdb = titlePage?.imdbPage()
         if (imdb) window.open(imdb, '_blank', 'noopener')
         return 'handled'
       }
@@ -256,7 +210,7 @@
   bind:open
   rails={shown}
   remember="jellyflow.discovering"
-  shown={app.view === 'discover'}
+  active={app.view === 'discover' && !app.help}
   url={(p, px) => discover.image(p.poster, px)}
   label={(p) => `${p.title}${p.year ? ` (${p.year})` : ''}`}
   backdrop={(p) => discover.backdrop(p.backdrop)}
@@ -287,7 +241,7 @@
 
   {#snippet page(p)}
     <DiscoverPage
-      bind:this={filmPage}
+      bind:this={titlePage}
       pick={p}
       onwish={() => void wish(p)}
       ondismiss={() => {
@@ -303,19 +257,19 @@
   {/snippet}
 
   <SearchLine
-    searching={searching !== undefined}
-    bind:query
+    searching={search.searching}
+    bind:query={search.query}
     placeholder="a film or series, on TMDB"
-    {applied}
+    applied={search.applied}
     everything="all rows"
-    count={searching && !finding ? `${foundHere.length} found` : undefined}
-    note={note || (discover.finding ? `Finding the best of ${discover.finding}…` : undefined)}
+    count={search.searching && !finding ? `${foundHere.length} found` : undefined}
+    note={note.text || (discover.finding ? `Finding the best of ${discover.finding}…` : undefined)}
     hint={open ? undefined : wishHint}
     quiet={app.quiet}
-    oninput={() => search(query)}
-    onclear={clearSearch}
-    oncancel={cancelSearch}
-    ondone={doneSearch}
+    oninput={() => search.typed()}
+    onclear={() => search.clear()}
+    oncancel={() => search.cancel()}
+    ondone={() => search.done(finding || foundHere.length > 0)}
     onmove={(dir, e) => rails?.press('search', dir, e.repeat, e.code)}
   />
 </Rails>

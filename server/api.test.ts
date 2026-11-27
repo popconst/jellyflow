@@ -6,11 +6,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import type { DiscoverList, Suggestion } from '../src/core/discover.ts'
+import { Images } from '../src/lib/tmdb/index.ts'
 import { Api } from './api.ts'
 import { Store } from './db.ts'
-import { AUTH, fakeJellyfin, fakeTmdb, type FakeJellyfin, type FakeTmdb } from './fakes.ts'
-import { Images } from './images.ts'
-import { Tmdb } from './tmdb.ts'
+import { AUTH, fakeJellyfin, fakeTmdb, fakeTmdbClient, type FakeJellyfin, type FakeTmdb } from './fakes.ts'
 import { Users } from './users.ts'
 
 let jellyfin: FakeJellyfin
@@ -32,7 +31,7 @@ before(async () => {
   tmdb = fakeTmdb()
   const store = new Store(':memory:')
   const images = new Images(imageDir, tmdb.fetcher)
-  ;[server, base] = await serve(new Api({ store, users: new Users(jellyfin.url), tmdb: new Tmdb('token', store, tmdb.fetcher), images }))
+  ;[server, base] = await serve(new Api({ store, users: new Users(jellyfin.url), tmdb: fakeTmdbClient(tmdb, store), images }))
   ;[withoutTmdb, baseWithout] = await serve(
     new Api({ store: new Store(':memory:'), users: new Users(jellyfin.url), tmdb: undefined, images }),
   )

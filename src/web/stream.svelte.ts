@@ -7,9 +7,8 @@
 // of its apps resumes where it was stopped.
 
 import type Hls from 'hls.js'
-import { ticks, type DeviceProfile, type Jellyfin, type MediaSource, type Playing } from '../core/jellyfin.ts'
-import { playMethod } from '../core/playback.ts'
-import { nativeHls } from './caps.ts'
+import { nativeHls } from '../lib/jellyfin/browser.ts'
+import { playMethod, ticks, type DeviceProfile, type Jellyfin, type MediaSource, type Playing } from '../lib/jellyfin/index.ts'
 
 /** Where it's at goes to Jellyfin this often while it plays (ms) */
 const REPORT_EVERY = 10_000

@@ -10,36 +10,31 @@
   import { searchShelf, type Shelf, type Tile } from '../core/shelves.ts'
   import { episodeCode } from '../core/shows.ts'
   import { facts, left, resumable, runtime, status } from '../core/titles.ts'
+  import { Mark, Poster, Rails, type Rail } from '../lib/coverflow/index.ts'
   import Caption from './Caption.svelte'
-  import Mark from './Mark.svelte'
-  import Poster from './Poster.svelte'
   import Progress from './Progress.svelte'
-  import Rails, { type Rail } from './Rails.svelte'
+  import { Note, Search } from './search.svelte.ts'
   import SearchLine from './SearchLine.svelte'
-  import { app, store, stored } from './state.svelte.ts'
+  import { app } from './state.svelte.ts'
   import TitlePage from './TitlePage.svelte'
   import { videos } from './videos.svelte.ts'
 
   /** An opened title's page, as wide as this many poster heights: a film's, a series' (its episodes need room) */
   const FILM_PAGE = 1.15
   const SHOW_PAGE = 1.45
-  /** The search on, kept across reloads */
-  const SEARCH = 'jellyflow.watchSearch'
 
   let rails = $state<Rails<Tile>>()
   let titlePage = $state<TitlePage>()
   let open = $state(false)
   let focusKey = $state<string | undefined>()
-  /** Searching: what was on before, for Esc */
-  let searching = $state<{ prev: string } | undefined>()
-  let query = $state(stored<string>(SEARCH) ?? '')
-  let applied = $state(stored<string>(SEARCH) ?? '')
+  /** The search on, kept across reloads */
+  const search = new Search('jellyflow.watchSearch')
+  /** A word in the line at the bottom for a while */
+  const note = new Note(5000)
   /** The last title taken off Continue Watching, for u */
   let removed = $state.raw<Tile | undefined>()
-  let note = $state('')
-  let noteTimer: ReturnType<typeof setTimeout> | undefined
 
-  const shelves = $derived<Shelf[]>(applied.trim() ? [searchShelf(videos.titles, applied)] : videos.shelves)
+  const shelves = $derived<Shelf[]>(search.applied.trim() ? [searchShelf(videos.titles, search.applied)] : videos.shelves)
   const shown = $derived<Rail<Tile>[]>(shelves.map((s) => ({ key: s.key, name: s.name, items: s.tiles, passing: s.key === 'search' })))
 
   // the films and series are read the first time Watch is opened
@@ -51,20 +46,13 @@
     app.pageOpen.watch = open
   })
 
-  /** A word in the line at the bottom for a while */
-  function say(message: string): void {
-    note = message
-    clearTimeout(noteTimer)
-    noteTimer = setTimeout(() => (note = ''), 5000)
-  }
-
   /** x: off Continue Watching (until it's watched again); u puts it back */
   function remove(): void {
     const at = rails?.current()
     if (at?.rail.key !== 'continue' || !at.item) return
     removed = at.item
     videos.hide(at.item)
-    say(`“${at.item.title.title}” is off Continue Watching · u puts it back`)
+    note.say(`“${at.item.title.title}” is off Continue Watching · u puts it back`)
   }
 
   function undo(): void {
@@ -73,39 +61,7 @@
     removed = undefined
     rails?.show('continue', t.id)
     videos.unhide(t.id)
-    say(`“${t.title.title}” is back`)
-  }
-
-  function search(again: string): void {
-    applied = again
-    store(SEARCH, again)
-  }
-
-  // the search's keys (SearchLine)
-
-  function clearSearch(): void {
-    query = ''
-    search('')
-  }
-
-  /** Esc: the rows as they were */
-  function cancelSearch(): void {
-    if (!searching) return
-    const { prev } = searching
-    searching = undefined
-    query = prev
-    search(prev)
-  }
-
-  /** Enter: browse what was found; nothing found is the same as Esc */
-  function doneSearch(): void {
-    if (!searching) return
-    const { prev } = searching
-    searching = undefined
-    if (!shelves[0]?.tiles.length) {
-      query = prev
-      search(prev)
-    }
+    note.say(`“${t.title.title}” is back`)
   }
 
   /** Watch's own keys (the rows' are Rails'): Continue Watching, search */
@@ -118,12 +74,11 @@
         undo()
         return true
       case '/':
-        query = applied
-        searching = { prev: applied }
+        search.start()
         return true
       case '<Esc>':
-        if (!applied.trim()) return false
-        clearSearch()
+        if (!search.applied.trim()) return false
+        search.clear()
         return true
       default:
         return false
@@ -153,7 +108,7 @@
   bind:focusKey
   rails={shown}
   remember="jellyflow.watching"
-  shown={app.view === 'watch'}
+  active={app.view === 'watch' && !app.help}
   url={poster}
   label={(t) => `${t.title.title}${t.title.year ? ` (${t.title.year})` : ''}`}
   pageWide={(t) => (t.title.kind === 'show' ? SHOW_PAGE : FILM_PAGE)}
@@ -187,23 +142,23 @@
   {/snippet}
 
   {#snippet empty()}
-    {#if videos.loading || !videos.read}Loading films and series…{:else if applied.trim()}Nothing found for “{applied.trim()}”{:else}No films or series yet{/if}
+    {#if videos.loading || !videos.read}Loading films and series…{:else if search.applied.trim()}Nothing found for “{search.applied.trim()}”{:else}No films or series yet{/if}
   {/snippet}
 
   <SearchLine
-    searching={searching !== undefined}
-    bind:query
+    searching={search.searching}
+    bind:query={search.query}
     placeholder="title, year or genre"
-    {applied}
+    applied={search.applied}
     everything="all rows"
-    count={searching ? `${shelves[0]?.tiles.length ?? 0} found` : undefined}
-    note={note || undefined}
+    count={search.searching ? `${shelves[0]?.tiles.length ?? 0} found` : undefined}
+    note={note.text || undefined}
     hint={focusKey === 'continue' && !open ? removeHint : undefined}
     quiet={app.quiet}
-    oninput={() => search(query)}
-    onclear={clearSearch}
-    oncancel={cancelSearch}
-    ondone={doneSearch}
+    oninput={() => search.typed()}
+    onclear={() => search.clear()}
+    oncancel={() => search.cancel()}
+    ondone={() => search.done(Boolean(shelves[0]?.tiles.length))}
     onmove={(dir, e) => rails?.press('search', dir, e.repeat, e.code)}
   />
 </Rails>

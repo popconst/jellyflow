@@ -4,7 +4,7 @@
   timeupdate); up a little while the controls show.
 -->
 <script lang="ts">
-  import { linesAt, type Cue } from '../core/vtt.ts'
+  import { linesAt, type Cue } from '../lib/vtt/index.ts'
 
   interface Props {
     video: HTMLVideoElement | undefined

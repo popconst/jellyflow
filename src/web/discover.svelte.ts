@@ -6,16 +6,14 @@
 // adds to and takes from at once, the server told after.
 
 import { untrack } from 'svelte'
-import type { DiscoverList, Kind, Suggestion } from '../core/discover.ts'
-import { authorization } from '../core/jellyfin.ts'
+import { FIRST_YEAR, type DiscoverList, type Kind, type Suggestion } from '../core/discover.ts'
+import { authorization } from '../lib/jellyfin/index.ts'
 import { app, store, stored } from './state.svelte.ts'
 
 /** TMDB's image widths, smallest first */
 const WIDTHS = [92, 154, 185, 342, 500, 780]
 /** Films or series, kept across reloads */
 const KIND = 'jellyflow.discoverKind'
-/** No older year is asked for (the server's FIRST_YEAR) */
-const FIRST_YEAR = 1900
 
 /** A suggestion in a row: by its ref, which is unique in a row */
 export type Pick = Suggestion & { id: string }

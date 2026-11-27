@@ -1,205 +1,40 @@
-// A tiny Jellyfin client: only what browsing and playing a music library and
-// films needs. Plain fetch and URLs, so it runs in the browser and in Node alike.
+// A small Jellyfin client: logging in, the libraries and their items, the
+// images, how to play an item on this device and where it's at, the app's
+// own settings, live events. Plain fetch and URLs, so it runs in the browser
+// and in Node alike.
 
-export const CLIENT = 'jellyflow'
-/** The app's version, as Jellyfin lists it under Devices: package.json's (a test keeps them in step) */
-export const VERSION = '0.1.0'
+import { byDiscAndNumber, compareNames, folderName } from './items.ts'
+import type { Device, DeviceProfile, Item, Playing, PlaybackInfo, Preferences, Session } from './types.ts'
 
-/** Who's logged in where; saved by the app between runs */
-export interface Session {
-  server: string
-  token: string
-  userId: string
-  userName: string
-}
-
-/** This copy of the app, as Jellyfin lists it under Devices */
-export interface Device {
-  id: string
-  name: string
-}
-
-export interface NameId {
-  Name: string
-  Id: string
-}
-
-export interface MediaStream {
-  /** Video, Audio, Subtitle, … */
-  Type?: string
-  /** Its place in the file: what a choice of audio or subtitles names */
-  Index?: number
-  Codec?: string
-  /** "DTS-HD MA", "Main 10", … */
-  Profile?: string
-  /** ISO 639-2: eng, rum, … */
-  Language?: string
-  /** The track's own name in the file: "Commentary", "SDH", … */
-  Title?: string
-  IsDefault?: boolean
-  IsForced?: boolean
-  IsTextSubtitleStream?: boolean
-  /** For text subtitles, after PlaybackInfo: the file to fetch them from */
-  DeliveryUrl?: string
-  BitDepth?: number
-  SampleRate?: number
-  Channels?: number
-  BitRate?: number
-  Width?: number
-  Height?: number
-  /** SDR, HDR10, DOVI, … */
-  VideoRangeType?: string
-}
-
-export interface MediaSource {
-  Id?: string
-  Container?: string
-  Path?: string
-  MediaStreams?: MediaStream[]
-  /** After PlaybackInfo: the stream Jellyfin repackages (and converts) for this device; none when it plays the file as it is */
-  TranscodingUrl?: string
-  DefaultAudioStreamIndex?: number
-}
-
-/** What the user's done with an item */
-export interface UserData {
-  PlaybackPositionTicks?: number
-  Played?: boolean
-  /** ISO date: when it was last played (stopped partway or to the end) */
-  LastPlayedDate?: string
-  /** A series': how many of its episodes haven't been watched */
-  UnplayedItemCount?: number
-}
-
-/** How to play an item on this device: Jellyfin's PlaybackInfoResponse */
-export interface PlaybackInfo {
-  MediaSources: MediaSource[]
-  PlaySessionId?: string
-  ErrorCode?: string
-}
-
-/** What this device plays, so Jellyfin can work out what to send: its DeviceProfile (the fields used) */
-export interface DeviceProfile {
-  Name: string
-  MaxStreamingBitrate: number
-  MaxStaticBitrate: number
-  DirectPlayProfiles: { Type: string; Container: string; VideoCodec?: string; AudioCodec?: string }[]
-  TranscodingProfiles: {
-    Type: string
-    Container: string
-    Protocol: string
-    Context: string
-    VideoCodec?: string
-    AudioCodec: string
-    MaxAudioChannels?: string
-    MinSegments?: number
-    BreakOnNonKeyFrames?: boolean
-  }[]
-  ContainerProfiles: never[]
-  CodecProfiles: {
-    Type: string
-    Codec: string
-    Conditions: { Condition: string; Property: string; Value: string; IsRequired: boolean }[]
-  }[]
-  SubtitleProfiles: { Format: string; Method: string }[]
-}
-
-/** A report of what's playing, for Jellyfin to keep where it's at (and show it to other apps) */
-export interface Playing {
-  ItemId: string
-  MediaSourceId?: string
-  PlaySessionId?: string
-  PositionTicks: number
-  IsPaused?: boolean
-  CanSeek?: boolean
-  PlayMethod?: 'DirectPlay' | 'DirectStream' | 'Transcode'
-  AudioStreamIndex?: number
-  SubtitleStreamIndex?: number
-  EventName?: string
-}
-
-/** The fields of Jellyfin's BaseItemDto this app reads */
-export interface Item {
-  Id: string
-  Name: string
-  Type: string
-  IsFolder?: boolean
-  CollectionType?: string
-  Path?: string
-  ParentId?: string
-  Album?: string
-  AlbumId?: string
-  AlbumArtist?: string
-  AlbumArtists?: NameId[]
-  Artists?: string[]
-  ProductionYear?: number
-  IndexNumber?: number
-  ParentIndexNumber?: number
-  RunTimeTicks?: number
-  ImageTags?: Record<string, string>
-  AlbumPrimaryImageTag?: string
-  Genres?: string[]
-  Studios?: NameId[]
-  ProviderIds?: Record<string, string>
-  /** Cast and crew: Actor (Role: the character), Director, Writer, Producer, Creator, … */
-  People?: { Name: string; Id?: string; Type?: string; Role?: string; PrimaryImageTag?: string }[]
-  /** Keywords: "princess", "castle", … */
-  Tags?: string[]
-  MediaSources?: MediaSource[]
-  Overview?: string
-  ExternalUrls?: { Name: string; Url: string }[]
-  SortName?: string
-  OriginalTitle?: string
-  Taglines?: string[]
-  /** "PG-13", "R", … */
-  OfficialRating?: string
-  /** Out of 10 */
-  CommunityRating?: number
-  BackdropImageTags?: string[]
-  UserData?: UserData
-  /** ISO dates: when it came into the library; a series', when an episode last did */
-  DateCreated?: string
-  DateLastMediaAdded?: string
-  /** An episode's series and season */
-  SeriesId?: string
-  SeasonName?: string
-  /** A series': ISO date of its last episode, and Continuing or Ended */
-  EndDate?: string
-  Status?: string
-}
-
-/** Jellyfin's DisplayPreferencesDto: sent back whole when saved, with the app's own settings in CustomPrefs */
-export interface Preferences {
-  CustomPrefs?: Record<string, string | null>
-  [field: string]: unknown
-}
-
+/** A page of Jellyfin's items */
 interface Page {
   Items: Item[]
   TotalRecordCount: number
 }
 
-type Params = Record<string, string | number | boolean | undefined>
+/** A request's query: those undefined are left out */
+export type Params = Record<string, string | number | boolean | undefined>
 
 /** Jellyfin's Authorization header: the app, the device and, once logged in, the token */
 export function authorization(device: Device, token?: string): string {
   const quote = (s: string) => `"${s.replaceAll('"', "'")}"`
   const parts = [
-    `Client=${quote(CLIENT)}`,
+    `Client=${quote(device.client)}`,
     `Device=${quote(device.name)}`,
     `DeviceId=${quote(device.id)}`,
-    `Version=${quote(VERSION)}`,
+    `Version=${quote(device.version)}`,
   ]
   if (token) parts.push(`Token=${quote(token)}`)
   return `MediaBrowser ${parts.join(', ')}`
 }
 
 /** "jelly.example.com" or "https://jelly.example.com/" → "https://jelly.example.com" */
-export function normalizeServer(server: string): string {
+function normalizeServer(server: string): string {
   const s = server.trim().replace(/\/+$/, '')
   return /^https?:\/\//.test(s) ? s : `https://${s}`
 }
 
+/** Logs in to the Jellyfin at `server` ("jelly.example.com" will do): the session to make a client with, and to keep */
 export async function login(server: string, username: string, password: string, device: Device): Promise<Session> {
   server = normalizeServer(server)
   const response = await fetch(`${server}/Users/AuthenticateByName`, {
@@ -216,6 +51,7 @@ export async function login(server: string, username: string, password: string, 
 /** Ask for as little as possible: no user data, at most the front cover */
 const LEAN: Params = { enableUserData: false, imageTypeLimit: 1, enableImageTypes: 'Primary' }
 
+/** Jellyfin, as the user logged in on this device */
 export class Jellyfin {
   readonly session: Session
   readonly device: Device
@@ -225,6 +61,7 @@ export class Jellyfin {
     this.device = device
   }
 
+  /** A URL on the server, with `params` as its query */
   url(path: string, params: Params = {}): string {
     const url = new URL(this.session.server + path)
     for (const [key, value] of Object.entries(params)) {
@@ -233,10 +70,12 @@ export class Jellyfin {
     return url.toString()
   }
 
+  /** A GET's answer, parsed */
   async get<T>(path: string, params: Params = {}): Promise<T> {
     return (await this.request('GET', path, params)).json() as Promise<T>
   }
 
+  /** A POST of `body` (as JSON): its answer, parsed (none for a 204) */
   async post<T>(path: string, body: unknown, params: Params = {}): Promise<T> {
     const response = await this.request('POST', path, params, body)
     return (response.status === 204 ? undefined : await response.json()) as T
@@ -265,6 +104,7 @@ export class Jellyfin {
     return this.session.server + path
   }
 
+  /** The user's items that `params` ask for (Jellyfin's /Items), as little of each as will do unless asked for more */
   async items(params: Params): Promise<Item[]> {
     const page = await this.get<Page>('/Items', { userId: this.session.userId, ...LEAN, ...params })
     return page.Items
@@ -276,7 +116,7 @@ export class Jellyfin {
     return page.Items
   }
 
-  /** Every film in a library, with what the row, its page and resuming need (where it was stopped) */
+  /** Every film in a library, with what a row of posters, a film's page and resuming need (where it was stopped) */
   movies(libraryId: string): Promise<Item[]> {
     return this.items({
       parentId: libraryId,
@@ -289,7 +129,7 @@ export class Jellyfin {
     })
   }
 
-  /** Every series in a library (shows, courses), with what the row and its page need */
+  /** Every series in a library (shows, courses), with what a row of posters and a series' page need */
   series(libraryId: string): Promise<Item[]> {
     return this.items({
       parentId: libraryId,
@@ -329,18 +169,22 @@ export class Jellyfin {
   }
 
   /**
-   * This app's settings for the user, kept by Jellyfin (so every browser
-   * the user logs in from has them): its CustomPrefs, strings by name
+   * The app's settings for the user, kept by Jellyfin under its name (so
+   * every browser the user logs in from has them): its CustomPrefs, strings
+   * by name
    */
   async preferences(): Promise<Preferences> {
-    return this.get<Preferences>(`/DisplayPreferences/${CLIENT}`, { userId: this.session.userId, client: CLIENT })
+    const client = this.device.client
+    return this.get<Preferences>(`/DisplayPreferences/${client}`, { userId: this.session.userId, client })
   }
 
+  /** Saves them: what `preferences` gave, changed */
   async savePreferences(preferences: Preferences): Promise<void> {
-    await this.post(`/DisplayPreferences/${CLIENT}`, preferences, { userId: this.session.userId, client: CLIENT })
+    const client = this.device.client
+    await this.post(`/DisplayPreferences/${client}`, preferences, { userId: this.session.userId, client })
   }
 
-  /** Every album in a library, with what the row and its search need */
+  /** Every album in a library, with its folder, genres, labels and MusicBrainz id */
   albums(libraryId: string): Promise<Item[]> {
     return this.items({
       parentId: libraryId,
@@ -485,6 +329,7 @@ export class Jellyfin {
     return url.toString()
   }
 
+  /** Ends the session on the server: its token stops working */
   logout(): Promise<Response> {
     return fetch(this.url('/Sessions/Logout'), {
       method: 'POST',
@@ -498,38 +343,4 @@ export class SessionExpired extends Error {
   constructor() {
     super('Jellyfin wants you to log in again')
   }
-}
-
-/** A folder's name on disk ("1983 - Kill ’Em All"), else Jellyfin's name for it */
-export function folderName(item: Item): string {
-  const path = item.Path?.replace(/[/\\]+$/, '')
-  return path ? (path.split(/[/\\]/).pop() ?? item.Name) : item.Name
-}
-
-/** Natural, case-insensitive: "Disc 2" before "Disc 10" */
-export function compareNames(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
-}
-
-export function byDiscAndNumber(a: Item, b: Item): number {
-  return (
-    (a.ParentIndexNumber ?? 1) - (b.ParentIndexNumber ?? 1) ||
-    (a.IndexNumber ?? 0) - (b.IndexNumber ?? 0) ||
-    compareNames(a.Path ?? a.Name, b.Path ?? b.Name)
-  )
-}
-
-/** Jellyfin's ticks are 100 ns */
-export function seconds(ticks: number | undefined): number {
-  return ticks ? ticks / 10_000_000 : 0
-}
-
-export function ticks(seconds: number): number {
-  return Math.round(seconds * 10_000_000)
-}
-
-/** Jellyfin's ISO dates as milliseconds; 0 for none */
-export function date(iso: string | undefined): number {
-  const t = iso ? Date.parse(iso) : Number.NaN
-  return Number.isFinite(t) ? t : 0
 }

@@ -3,7 +3,7 @@
 // what they watch) and what they watched last. Read from Jellyfin as them.
 
 import { refOf, type Kind, type Ref } from '../src/core/discover.ts'
-import { date, type Item, type Jellyfin } from '../src/core/jellyfin.ts'
+import { date, type Item, type Jellyfin } from '../src/lib/jellyfin/index.ts'
 
 export interface Owned {
   kind: Kind
@@ -49,7 +49,7 @@ export async function libraryOf(jellyfin: Jellyfin): Promise<Library> {
 }
 
 /** Films and episodes as last played → the films and series they are, newest first, each once */
-export function recentOf(watched: Item[], byId: Map<string, Owned>): Owned[] {
+function recentOf(watched: Item[], byId: Map<string, Owned>): Owned[] {
   const seen = new Set<string>()
   return watched
     .filter((item) => date(item.UserData?.LastPlayedDate) > 0)

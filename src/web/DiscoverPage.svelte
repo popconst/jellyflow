@@ -90,7 +90,6 @@
       photo: discover.image(c.profile_path ?? undefined, 144),
     })),
   )
-
 </script>
 
 <Sheet

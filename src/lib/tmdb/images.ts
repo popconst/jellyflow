@@ -9,19 +9,21 @@
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { TmdbError } from './tmdb.ts'
+import { TmdbError } from './client.ts'
 
 const TMDB = 'https://image.tmdb.org/t/p'
 const SIZES = new Set(['w92', 'w154', 'w185', 'w300', 'w342', 'w500', 'w780', 'w1280', 'h632', 'original'])
 const TYPES: Record<string, string> = { jpg: 'image/jpeg', png: 'image/png', svg: 'image/svg+xml', webp: 'image/webp' }
-/** Images fetched at once while warming (the page's own come first) */
+/** Images fetched at once while warming: a few, so the page's own, asked meanwhile, don't wait behind them */
 const WARMING = 4
 
+/** An image, whole, and its type ("image/jpeg") */
 export interface Image {
   type: string
   body: Buffer
 }
 
+/** TMDB's images, kept on disk */
 export class Images {
   private readonly dir: string
   private readonly fetch: typeof fetch

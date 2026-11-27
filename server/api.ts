@@ -17,20 +17,19 @@
 //   GET    /api/img/{size}/{file}   TMDB's images (kept on the server's disk once fetched)
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { kindOf, parseRef, suggestion, type DiscoverList, type Suggestion, type TmdbPage, type TmdbTitle } from '../src/core/discover.ts'
-import { SessionExpired } from '../src/core/jellyfin.ts'
+import { FIRST_YEAR, kindOf, parseRef, suggestion, type DiscoverList, type Suggestion, type TmdbPage, type TmdbTitle } from '../src/core/discover.ts'
+import { SessionExpired } from '../src/lib/jellyfin/index.ts'
+import { TmdbError, type Images, type Query, type Tmdb } from '../src/lib/tmdb/index.ts'
 import type { Store } from './db.ts'
-import { discover, FIRST_YEAR, latestYears, SHOWN } from './discover.ts'
-import type { Images } from './images.ts'
+import { discover, latestYears, SHOWN } from './discover.ts'
 import { libraryOf, type Library } from './library.ts'
-import { TmdbError, type Query, type Tmdb } from './tmdb.ts'
 import type { User, Users } from './users.ts'
 
 /** The latest years' lists, older than this, are worked out again (in the background) when asked for; an older year's are kept */
 const LISTS_FOR = 12 * 3_600_000
 /** A user's library is read from Jellyfin again after this */
 const LIBRARY_FOR = 5 * 60_000
-/** The posters' sizes the rows ask for (Row.svelte's thumbs, through discover.svelte.ts): fetched ahead for the lists */
+/** The posters' sizes the rows ask for (the Cover Flow row's thumbs, 300 and 500 px, through discover.svelte.ts): fetched ahead for the lists */
 const POSTER_SIZES = ['w342', 'w500']
 
 export interface ApiOptions {
