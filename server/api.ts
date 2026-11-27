@@ -3,7 +3,9 @@
 // Authorization header along):
 //
 //   GET    /api/me                  who's asking; whether Discover's on (a TMDB token)
-//   GET    /api/discover            their Discover lists (?refresh=1: worked out afresh)
+//   GET    /api/discover            their Discover lists: the latest years', and the older ones worked out
+//                                    before (?year=2022: that year's alone; ?refresh=1: worked out afresh);
+//                                    and the oldest year they're of
 //   GET    /api/wishlist            their wishlist, newest first
 //   PUT    /api/wishlist/{ref}      on it ("tmdb:movie:603")
 //   DELETE /api/wishlist/{ref}      off it
@@ -18,13 +20,13 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { kindOf, parseRef, suggestion, type DiscoverList, type Suggestion, type TmdbPage, type TmdbTitle } from '../src/core/discover.ts'
 import { SessionExpired } from '../src/core/jellyfin.ts'
 import type { Store } from './db.ts'
-import { discover, SHOWN } from './discover.ts'
+import { discover, FIRST_YEAR, latestYears, SHOWN } from './discover.ts'
 import type { Images } from './images.ts'
 import { libraryOf, type Library } from './library.ts'
 import { TmdbError, type Query, type Tmdb } from './tmdb.ts'
 import type { User, Users } from './users.ts'
 
-/** Lists older than this are worked out again when asked for */
+/** The latest years' lists, older than this, are worked out again (in the background) when asked for; an older year's are kept */
 const LISTS_FOR = 12 * 3_600_000
 /** A user's library is read from Jellyfin again after this */
 const LIBRARY_FOR = 5 * 60_000
@@ -53,7 +55,7 @@ export class Api {
   private readonly tmdb: Tmdb | undefined
   private readonly images: Images
   private readonly libraries = new Map<string, { library: Promise<Library>; until: number }>()
-  /** Lists being worked out, by user: asked twice meanwhile, worked out once */
+  /** Lists being worked out, by user and what for: asked twice meanwhile, worked out once */
   private readonly working = new Map<string, Promise<DiscoverList[]>>()
 
   constructor(options: ApiOptions) {
@@ -76,7 +78,7 @@ export class Api {
         case 'GET me':
           return json(res, 200, { id: user.id, name: user.name, discover: this.tmdb !== undefined })
         case 'GET discover':
-          return json(res, 200, { lists: await this.discover(user, url.searchParams.has('refresh')) })
+          return json(res, 200, await this.discover(user, yearOf(url.searchParams.get('year')), url.searchParams.has('refresh')))
         case 'GET wishlist':
           return json(res, 200, { items: await this.wishlist(user) })
         case 'PUT wishlist/':
@@ -133,24 +135,57 @@ export class Api {
     return library
   }
 
-  private async discover(user: User, refresh: boolean): Promise<DiscoverList[]> {
-    const tmdb = this.tmdbOrFail()
-    const made = SHOWN.join(',')
-    let lists = this.store.lists(user.id, made)
-    const stale = !lists.length || lists.some((l) => l.computed < Date.now() - LISTS_FOR)
-    if (refresh || stale) {
-      let working = this.working.get(user.id)
-      if (!working) {
-        working = this.library(user).then((library) => discover(tmdb, library, SHOWN))
-        this.working.set(user.id, working)
-        void working.finally(() => this.working.delete(user.id)).catch(() => undefined)
-      }
-      lists = await working
-      this.store.keepLists(user.id, made, lists)
-      this.warm(lists)
+  /**
+   * The lists of the latest years and the older ones worked out before (kept:
+   * on down from the latest while there's one), or of one older `year`; and
+   * the oldest year they're of
+   */
+  private async discover(user: User, year: number | undefined, refresh: boolean): Promise<{ lists: DiscoverList[]; oldest: number }> {
+    const latest = latestYears()
+    const lists = [...(await this.listsOf(user, year === undefined ? latest : [year], refresh))]
+    let oldest = year ?? Math.min(...latest)
+    while (year === undefined && oldest > FIRST_YEAR) {
+      const kept = this.store.lists(user.id, madeFor([oldest - 1]))
+      if (!kept.length) break
+      lists.push(...kept)
+      oldest--
     }
     const marked = await this.marker(user)
-    return lists.map((l) => ({ ...l, items: l.items.map(marked) }))
+    return { lists: lists.map((l) => ({ ...l, items: l.items.map(marked) })), oldest }
+  }
+
+  /**
+   * The lists of `years`, as kept, or worked out (none kept, or `refresh`).
+   * The latest years' are worked out again every so often (LISTS_FOR), in
+   * the background: the ones kept meanwhile; an older year's are kept as
+   * they are
+   */
+  private async listsOf(user: User, years: number[], refresh: boolean): Promise<DiscoverList[]> {
+    const kept = this.store.lists(user.id, madeFor(years))
+    if (!kept.length || refresh) return this.workOut(user, years)
+    const latest = years.includes(new Date().getFullYear())
+    if (latest && kept.some((l) => l.computed < Date.now() - LISTS_FOR)) void this.workOut(user, years).catch((e: unknown) => console.error(e))
+    return kept
+  }
+
+  /** The lists of `years` worked out afresh, kept, and their posters fetched ahead; asked twice meanwhile, worked out once */
+  private workOut(user: User, years: number[]): Promise<DiscoverList[]> {
+    const tmdb = this.tmdbOrFail()
+    const made = madeFor(years)
+    const asked = `${user.id} ${made}`
+    let working = this.working.get(asked)
+    if (!working) {
+      working = this.library(user)
+        .then((library) => discover(tmdb, library, SHOWN, { years }))
+        .then((lists) => {
+          this.store.keepLists(user.id, made, lists)
+          this.warm(lists)
+          return lists
+        })
+      this.working.set(asked, working)
+      void working.finally(() => this.working.delete(asked)).catch(() => undefined)
+    }
+    return working
   }
 
   /** Marks what's in the library, and what's on the wishlist */
@@ -205,6 +240,19 @@ export class Api {
     })
     res.end(headOnly ? undefined : image.body)
   }
+}
+
+/** What a set of lists is kept as: the kinds shown, and the years they're of */
+function madeFor(years: number[]): string {
+  return `${SHOWN.join(',')}:${years.join(',')}`
+}
+
+/** ?year=: one of TMDB's years, up to this one (undefined: none asked) */
+function yearOf(param: string | null): number | undefined {
+  if (param === null) return undefined
+  const year = Number(param)
+  if (!/^\d{4}$/.test(param) || year < FIRST_YEAR || year > new Date().getFullYear()) throw new HttpError(400, `Not a year to discover: ${param}`)
+  return year
 }
 
 function json(res: ServerResponse, status: number, body?: unknown): void {

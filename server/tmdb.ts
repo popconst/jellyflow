@@ -10,7 +10,7 @@ const API = 'https://api.themoviedb.org/3'
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
 /** Requests to TMDB at once */
-const AT_ONCE = 6
+const AT_ONCE = 16
 
 /** What may be asked, and how long an answer is kept: lists change daily, who made a film doesn't */
 const ALLOWED: [RegExp, number][] = [

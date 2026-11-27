@@ -6,7 +6,7 @@ keyboard, with vim keys.
 - **Watch:** your films and series in rows of posters, Netflix style, each
   row a Cover Flow. The player sends the picture as it is in the file.
 - **Discover:** films and series beyond your library, from TMDB: the best
-  series (3+ seasons) and films of this year and the three before, in the
+  films and series (3+ seasons) of each year, from this one back, in the
   same rows, with a wishlist. It's optional, through jellyflow's own server.
 - **Listen:** your music, flipped through by album cover (Cover Flow) or
   walked folder by folder with album art.
@@ -52,12 +52,18 @@ shares the same core.
 
 ## Discover
 
-- **The best series** of this year and the three before, with 3 seasons
+- **Movies or Series:** two tabs in the header (`Shift-Tab` switches);
+  everything below, the wishlist and search too, is of the one shown.
+- **Year by year:** this year and the three before at first. Down from the
+  last row, the year before it is asked for, films and series at once, so
+  the other tab has it too: one year at a time. Up to 100 in a row. An older year is kept on
+  the server once worked out, and comes with the rest next time.
+- **The best series** of each year, with 3 seasons
   out or more: each in the year it was last on, the year it ended or (still
   running) its latest season's. Of TMDB's most voted for that year (score
   7.5 or more from at least 200 votes), the best scored first; how many
   seasons, and whether it ended, under each.
-- **The best films** of this year and the three before: TMDB score 7.2 or
+- **The best films** of each year: TMDB score 7.2 or
   more from at least 200 votes: of the most popular, the best scored first.
 - The lists are worked out when the server starts, and their posters
   fetched ahead and kept on the server, so Discover opens at once and a
@@ -204,7 +210,7 @@ wishlist, and nobody without a login gets anything.
 | | |
 |---|---|
 | `GET /api/me` | who's asking; whether Discover is on |
-| `GET /api/discover` | the lists (`?refresh=1`: worked out afresh; otherwise every 12 hours) |
+| `GET /api/discover` | the lists of the latest four years and the older ones worked out before, and the oldest year they're of (`?year=2022`: that year's alone; `?refresh=1`: worked out afresh) |
 | `GET /api/wishlist` | the wishlist, newest first |
 | `PUT /api/wishlist/{ref}` | add a film or series (`tmdb:movie:603`, `tmdb:tv:1399`) |
 | `DELETE /api/wishlist/{ref}` | remove one |
@@ -215,15 +221,19 @@ wishlist, and nobody without a login gets anything.
 | `GET /api/tmdb/{path}` | TMDB itself, for a title's or a person's page (only what Discover reads) |
 | `GET /api/img/{size}/{file}` | TMDB's posters and backdrops |
 
-The lists Discover shows for now: the best series of this year and the three
-before, in the year each was last on (3+ seasons out, TMDB score 7.5+ from
+The lists Discover shows for now: the best series of each year (this one and
+the three before at first, older ones as they're asked for), in the year each
+was last on (3+ seasons out, TMDB score 7.5+ from
 200+ votes; no news, reality, soaps or talk shows), and the best films of
 those years (TMDB score 7.2+ from 200+ votes). The server can work out more,
 from your library: new and coming from the directors and actors it's most
 made of (weighed by what you watched), because you watched (your last
 three), what's next for your series, in cinemas, coming soon and trending
-(`ALL` in `server/discover.ts`; `SHOWN` is what's on). Lists are kept for 12
-hours; TMDB's answers from hours (lists) to a month (a film's credits).
+(`ALL` in `server/discover.ts`; `SHOWN` is what's on). The latest four years'
+lists are worked out again every 12 hours, in the background (the ones kept
+are shown meanwhile); an older year's are kept as they
+are (`?refresh=1` with its `?year=` works them out again). TMDB's answers
+are kept from hours (lists) to a month (a film's credits).
 
 ## Keys
 
@@ -259,6 +269,8 @@ hours; TMDB's answers from hours (lists) to a month (a film's credits).
 
 | Key | |
 |---|---|
+| `Shift-Tab` | Movies ⇄ Series |
+| `j` `↓` | from the last row: the year before it (films and series both) |
 | `Enter` | open a film's or series' page |
 | `w` | on your wishlist, or off it (`Enter` too, on a title's page) |
 | `i` | on a title's page: the film or series on IMDb |

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Store } from './db.ts'
-import { ALL, discover, newWorkOf, peopleOf } from './discover.ts'
+import { ALL, discover, newWorkOf, peopleOf, SHOWN } from './discover.ts'
 import { daysFromNow, fakeTmdb, tmdbAnswers } from './fakes.ts'
 import type { Library, Owned } from './library.ts'
 import { Tmdb } from './tmdb.ts'
@@ -110,6 +110,22 @@ test("discover: a year's best series, 3 seasons out or more, in the year they we
   assert.match(asked ?? '', /vote_average\.gte=7\.5/)
   assert.match(asked ?? '', /without_genres=10763%2C10764%2C10766%2C10767/)
   assert.equal(fake.calls.filter((c) => c === '/tv/42009').length, 1, 'Black Mirror, on both years, is asked about once')
+})
+
+test('discover: an older year, asked for alone: its best series and films', async () => {
+  const fake = fakeTmdb()
+  const tmdb = new Tmdb('token', new Store(':memory:'), fake.fetcher)
+  const lists = await discover(tmdb, library, SHOWN, { years: [2013] })
+  assert.deepEqual(
+    lists.map((l) => [l.key, l.name]),
+    [
+      ['series:2013', 'Best series of 2013'],
+      ['best:2013', 'Best films of 2013'],
+    ],
+  )
+  assert.deepEqual(lists[0]?.items.map((s) => [s.title, s.why]), [['Breaking Bad', '5 seasons, ended 2013']])
+  assert.ok(fake.calls.some((c) => c.startsWith('/discover/movie?') && c.includes('primary_release_year=2013')))
+  assert.ok(!fake.calls.some((c) => c.includes(`primary_release_year=${new Date().getFullYear()}`)), 'only the year asked for')
 })
 
 test('discover: every kind of list, in order, without what the library has', async (t) => {

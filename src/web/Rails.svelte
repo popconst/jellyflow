@@ -2,9 +2,9 @@
   Rows of posters, Netflix style, each a Cover Flow row (Row.svelte): what
   Watch and Discover show. The row with the keys is bigger, its name big
   above it and a caption under its middle poster; the next rows wait smaller
-  below; j and k (or scrolling) go from row to row. Enter opens the middle
-  poster's page: its row comes forward, full size, and the page swings out
-  beside the poster. Behind it all, dimly, the backdrop of what the row rests
+  below; j and k (or scrolling) go from row to row (down from the last, the
+  view may have more: onend). Enter opens the middle poster's page: its row
+  comes forward, full size, and the page swings out beside the poster. Behind it all, dimly, the backdrop of what the row rests
   on. Where each row was left is remembered. What the posters, captions,
   marks and pages are is the view's.
 -->
@@ -75,6 +75,8 @@
     backdrop?: (item: T) => string | undefined
     /** The view's own keys, before the rows': whether it took it */
     onkey?: (key: string, e: KeyboardEvent) => boolean
+    /** Down from the last row: more rows, should the view have them */
+    onend?: () => void
     /** When there are no rows */
     empty: Snippet
     /** Along the foot (the search line) */
@@ -96,6 +98,7 @@
     pageKey = () => 'close',
     backdrop,
     onkey,
+    onend,
     empty,
     children,
   }: Props = $props()
@@ -235,6 +238,7 @@
   }
 
   function toRow(i: number): void {
+    if (i >= rails.length && rails.length) onend?.()
     const to = Math.max(0, Math.min(rails.length - 1, i))
     if (to === focus) return
     const now = heading()

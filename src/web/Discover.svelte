@@ -1,16 +1,17 @@
 <!--
-  Discover: films and series beyond the library, from TMDB through
-  jellyflow's server (discover.svelte.ts), in rows like Watch's
-  (Rails.svelte), each the best scored first: your wishlist, then the best
-  series and the best films of this year and the three before, without
-  what's in the library, wished for or not of interest. / searches all of
-  TMDB by title. Enter opens a title's page (DiscoverPage.svelte); w puts it
-  on the wishlist or takes it off; x: not interested, u puts it back. What's
-  in the library has a tick, what's wished for a heart.
+  Discover: films or series (Shift-Tab, the header's two) beyond the
+  library, from TMDB through jellyflow's server (discover.svelte.ts), in
+  rows like Watch's (Rails.svelte), each the best scored first: your
+  wishlist, then the best of this year and the three before, without what's
+  in the library, wished for or not of interest; down from the last row, the
+  year before it is asked for. / searches all of TMDB by title. Enter opens
+  a title's page (DiscoverPage.svelte); w puts it on the wishlist or takes
+  it off; x: not interested, u puts it back. What's in the library has a
+  tick, what's wished for a heart.
 -->
 <script lang="ts">
   import { untrack } from 'svelte'
-  import { byScore } from '../core/discover.ts'
+  import { byScore, type Kind } from '../core/discover.ts'
   import Caption from './Caption.svelte'
   import { discover, pick, type Pick } from './discover.svelte.ts'
   import DiscoverPage from './DiscoverPage.svelte'
@@ -42,15 +43,22 @@
 
   const asked = $derived(applied.trim())
   const finding = $derived(asked !== '' && found?.query !== asked)
+  const kind = $derived(discover.kind)
+  /** The kind shown, films or series */
+  const ofKind = (s: Pick): boolean => s.kind === kind
   /** Done with: in the library, wished for, or not of interest; left out of Discover's own rows */
   const done = (s: Pick): boolean => Boolean(s.owned) || discover.wished.has(s.ref) || discover.dismissed.has(s.ref)
+  const wishlist = $derived(discover.wishlist.map(pick).filter(ofKind).sort(byScore))
+  /** Found of this kind; how many of the other (said when none are of this one) */
+  const foundHere = $derived(found?.items.filter(ofKind) ?? [])
+  const foundOther = $derived((found?.items.length ?? 0) - foundHere.length)
   const live = $derived<Rail<Pick>[]>(
     asked
-      ? [{ key: 'search', name: `Found on TMDB for “${asked}”`, items: found?.items ?? [], passing: true }]
+      ? [{ key: 'search', name: `Found on TMDB for “${asked}”`, items: foundHere, passing: true }]
       : [
-          ...(discover.wishlist.length ? [{ key: 'wishlist', name: 'Your wishlist', items: discover.wishlist.map(pick).sort(byScore) }] : []),
+          ...(wishlist.length ? [{ key: `wishlist:${kind}`, name: 'Your wishlist', items: wishlist }] : []),
           ...discover.lists
-            .map((l) => ({ key: l.key, name: l.name, items: l.items.map(pick).filter((s) => !done(s)) }))
+            .map((l) => ({ key: l.key, name: l.name, items: l.items.map(pick).filter((s) => ofKind(s) && !done(s)) }))
             .filter((r) => r.items.length),
         ],
   )
@@ -65,6 +73,12 @@
 
   $effect(() => {
     app.pageOpen.discover = open
+  })
+
+  // films ⇄ series: an open page shuts (the rows change once it has)
+  $effect(() => {
+    void discover.kind
+    untrack(() => rails?.closePage())
   })
 
   $effect(() => {
@@ -138,7 +152,7 @@
     if (!searching) return
     const { prev } = searching
     searching = undefined
-    if (!finding && !found?.items.length) {
+    if (!finding && !foundHere.length) {
       query = prev
       search(prev)
     }
@@ -170,9 +184,21 @@
     if (!r) return
     removed = undefined
     void discover.undismiss(r.pick, r.wished)
-    rails?.show(r.wished ? 'wishlist' : r.rail, r.pick.id)
+    discover.setKind(r.pick.kind)
+    rails?.show(r.wished ? `wishlist:${r.pick.kind}` : r.rail, r.pick.id)
     say(`“${r.pick.title}” is back`)
   }
+
+  /** Down from the last row: the year before the oldest one's (both kinds), one year at a time; said if it has nothing new of this kind */
+  function more(): void {
+    if (asked) return
+    void discover.more().then((got) => {
+      if (got && !got.lists.some((l) => l.items.some((s) => s.kind === discover.kind && !done(pick(s)))))
+        say(`Nothing new from ${got.year} · down again for ${got.year - 1}`)
+    })
+  }
+
+  const KINDS: Record<Kind, string> = { movie: 'films', tv: 'series' }
 
   /** Discover's own keys (the rows' are Rails'): the wishlist, not interested, search */
   function onkey(key: string): boolean {
@@ -236,6 +262,7 @@
   backdrop={(p) => discover.backdrop(p.backdrop)}
   {pageKey}
   {onkey}
+  onend={more}
 >
   {#snippet art(p, px)}
     <Poster src={discover.image(p.poster, px)} title={p.title} />
@@ -250,7 +277,7 @@
   {#snippet caption(p)}
     <Caption
       title={p.title}
-      text={[p.year, p.kind === 'tv' ? 'Series' : ''].filter(Boolean).join(' · ')}
+      text={p.year ? String(p.year) : ''}
       score={p.score}
       votes={p.votes}
       more={p.owned ? 'in your library' : discover.dismissed.has(p.ref) ? 'not interested' : p.why}
@@ -270,7 +297,9 @@
   {/snippet}
 
   {#snippet empty()}
-    {#if asked}{finding ? `Searching TMDB for “${asked}”…` : `Nothing on TMDB for “${asked}”`}{:else if discover.loading || !discover.read}Finding films and series…{:else}Nothing to discover yet{/if}
+    {#if asked}
+      {#if finding}Searching TMDB for “{asked}”…{:else if foundOther}No {KINDS[kind]} on TMDB for “{asked}”; {foundOther} {KINDS[kind === 'movie' ? 'tv' : 'movie']}: <kbd>⇧Tab</kbd>{:else}Nothing on TMDB for “{asked}”{/if}
+    {:else if discover.loading || !discover.read}Finding films and series…{:else}No {KINDS[kind]} to discover yet{/if}
   {/snippet}
 
   <SearchLine
@@ -279,8 +308,8 @@
     placeholder="a film or series, on TMDB"
     {applied}
     everything="all rows"
-    count={searching && !finding ? `${found?.items.length ?? 0} found` : undefined}
-    note={note || undefined}
+    count={searching && !finding ? `${foundHere.length} found` : undefined}
+    note={note || (discover.finding ? `Finding the best of ${discover.finding}…` : undefined)}
     hint={open ? undefined : wishHint}
     quiet={app.quiet}
     oninput={() => search(query)}

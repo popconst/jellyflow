@@ -114,6 +114,36 @@ test('discover: the lists, marking what the library has and what is wished for; 
   assert.equal(tmdb.calls.length, asked)
 })
 
+test('discover: an older year, asked for alone, kept beside the latest years and then with them; a year that can’t be one, refused', async () => {
+  const year = new Date().getFullYear()
+  const latest = (await (await call('/api/discover')).json()) as { lists: DiscoverList[]; oldest: number }
+  assert.equal(latest.oldest, year - 3)
+  const older = (await (await call('/api/discover?year=2013')).json()) as { lists: DiscoverList[]; oldest: number }
+  assert.deepEqual(
+    older.lists.map((l) => l.key),
+    ['series:2013', 'best:2013'],
+  )
+  assert.equal(older.oldest, 2013)
+  const asked = tmdb.calls.length
+  const again = (await (await call('/api/discover')).json()) as { lists: DiscoverList[] }
+  assert.deepEqual(
+    again.lists.map((l) => l.computed),
+    latest.lists.map((l) => l.computed),
+    'the latest years still kept',
+  )
+  await call('/api/discover?year=2013')
+  assert.equal(tmdb.calls.length, asked, 'and 2013 kept too')
+  await call(`/api/discover?year=${year - 4}`)
+  const on = (await (await call('/api/discover')).json()) as { lists: DiscoverList[]; oldest: number }
+  assert.deepEqual(
+    on.lists.slice(-2).map((l) => l.key),
+    [`best:${year - 3}`, `best:${year - 4}`],
+    'the year before the latest, worked out before, comes with them (2013, apart from them, doesn’t)',
+  )
+  assert.equal(on.oldest, year - 4)
+  for (const bad of ['1850', String(year + 1), '20x3', '']) assert.equal((await call(`/api/discover?year=${bad}`)).status, 400, bad)
+})
+
 test('not interested: on, listed, off; off the wishlist too', async () => {
   const ref = (id: number) => `/api/dismissed/${encodeURIComponent(`tmdb:movie:${id}`)}`
   await call(wishRef(800), 'PUT')

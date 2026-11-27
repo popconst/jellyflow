@@ -48,9 +48,10 @@
   function onkeydown(e: KeyboardEvent): void {
     if (!app.session || typing(e)) return
     switch (keyName(e)) {
-      // Tab: the next section (Watch, Discover, Listen); Shift-Tab: Cover Flow ⇄ Folders
+      // Tab: the next section (Watch, Discover, Listen); Shift-Tab: films ⇄ series in Discover, Cover Flow ⇄ Folders in Listen
       case '<Tab>':
-        if (e.shiftKey) app.setView(app.view === 'flow' ? 'folders' : 'flow')
+        if (e.shiftKey && app.section === 'discover') discover.setKind(discover.kind === 'movie' ? 'tv' : 'movie')
+        else if (e.shiftKey) app.setView(app.view === 'flow' ? 'folders' : 'flow')
         else if (app.sections.length > 1) app.setSection(app.sections[(app.sections.indexOf(app.section) + 1) % app.sections.length] ?? 'listen')
         break
       case '<Space>':
@@ -90,11 +91,12 @@
     return [films ? `${films} ${films === 1 ? 'film' : 'films'}` : '', series ? `${series} series` : ''].filter(Boolean).join(' · ')
   }
 
-  /** "3 on your wishlist" */
+  /** "3 films on your wishlist", of the kind shown */
   function discoverCount(): string {
-    if (!discover.read) return discover.loading ? 'Finding films…' : ''
-    const n = discover.wishlist.length
-    return n ? `${n} on your wishlist` : 'Nothing on your wishlist yet'
+    if (!discover.read) return discover.loading ? 'Finding films and series…' : ''
+    const n = discover.wishlist.filter((s) => s.kind === discover.kind).length
+    const what = discover.kind === 'tv' ? 'series' : n === 1 ? 'film' : 'films'
+    return n ? `${n} ${what} on your wishlist` : `No ${what} on your wishlist yet`
   }
 
   const help: [string, [string, string][]][] = [
@@ -156,7 +158,9 @@
     [
       'Discover',
       [
+        ['Shift-Tab', 'films ⇄ series'],
         ['j k h l', 'rows and titles, as in Watch; Enter opens a title’s page'],
+        ['j', 'down from the last row: the year before it (films and series both)'],
         ['w', 'on your wishlist, or off it (also Enter on a title’s page)'],
         ['x', 'not interested: left out of Discover (off your wishlist too); on a title’s page, it shuts'],
         ['u', 'puts back the last one you weren’t interested in'],
@@ -212,6 +216,12 @@
         <nav class="sub">
           <button class:on={app.view === 'flow'} onclick={() => app.setView('flow')}>Cover Flow</button>
           <button class:on={app.view === 'folders'} onclick={() => app.setView('folders')}>Folders</button>
+        </nav>
+        <kbd class="tabhint" title="Shift-Tab switches">⇧Tab</kbd>
+      {:else if app.section === 'discover'}
+        <nav class="sub">
+          <button class:on={discover.kind === 'movie'} onclick={() => discover.setKind('movie')}>Movies</button>
+          <button class:on={discover.kind === 'tv'} onclick={() => discover.setKind('tv')}>Series</button>
         </nav>
         <kbd class="tabhint" title="Shift-Tab switches">⇧Tab</kbd>
       {/if}

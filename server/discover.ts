@@ -2,8 +2,9 @@
 // and coming from the people they watch, because they watched …, what's next
 // for their series, the years' best series and films, what's in cinemas and
 // coming soon, and what's trending. Discover shows the years' best for now
-// (SHOWN); the rest are there to be turned on. A list that can't be worked out
-// (TMDB down) is left out.
+// (SHOWN): this year's and the three before at first, older years one at a
+// time as they're asked for; the rest are there to be turned on. A list that
+// can't be worked out (TMDB down) is left out.
 
 import {
   byScore,
@@ -38,7 +39,11 @@ const PEOPLE = 20
 /** "Because you watched": for this many of the latest */
 const BECAUSE = 3
 /** A list's length at most */
-const LONGEST = 40
+const LONGEST = 100
+/** TMDB's lists come this many to a page */
+const PAGE = 20
+/** Series looked at for a year's best, the most voted for first: few have the seasons, or were last on that year, so many more than LONGEST */
+const SERIES_LOOKED = 500
 
 interface MovieCredits {
   cast: { id: number; name: string; order: number }[]
@@ -196,12 +201,19 @@ async function nextForShows(tmdb: TmdbReader, library: Library, today: Date): Pr
     .sort(byDate)
 }
 
-/** The films TMDB's discover finds for `query`, the most popular first: two pages */
-async function discoverMovies(tmdb: TmdbReader, query: Query): Promise<Suggestion[]> {
-  const pages = await Promise.all(
-    [1, 2].map((page) => tmdb.get<TmdbPage>('/discover/movie', { ...query, sort_by: 'popularity.desc', include_adult: false, page })),
-  )
-  return pages.flatMap((p) => p.results).map((t) => suggestion(t, 'movie', ''))
+/** What TMDB's discover (`path`) finds for `query`, up to `most`: the first page, then as many more as there are and are needed */
+async function discoverUpTo(tmdb: TmdbReader, path: string, query: Query, most: number): Promise<TmdbTitle[]> {
+  const ask = (page: number) => tmdb.get<TmdbPage>(path, { ...query, include_adult: false, page })
+  const first = await ask(1)
+  const last = Math.min(first.total_pages, Math.ceil(most / PAGE))
+  const rest = await Promise.all(Array.from({ length: Math.max(0, last - 1) }, (_, i) => ask(i + 2)))
+  return [first, ...rest].flatMap((p) => p.results).slice(0, most)
+}
+
+/** The films TMDB's discover finds for `query`, the most popular first, up to `most` */
+async function discoverMovies(tmdb: TmdbReader, query: Query, most = 40): Promise<Suggestion[]> {
+  const films = await discoverUpTo(tmdb, '/discover/movie', { ...query, sort_by: 'popularity.desc' }, most)
+  return films.map((t) => suggestion(t, 'movie', ''))
 }
 
 /** How a series came to an end, by its TMDB status */
@@ -215,21 +227,20 @@ const ENDING: Record<string, string> = { Ended: 'ended', Canceled: 'cancelled' }
  * last on, so each one's details are read
  */
 async function bestSeries(tmdb: TmdbReader, year: number): Promise<Suggestion[]> {
-  const pages = await Promise.all(
-    [1, 2, 3, 4, 5].map((page) =>
-      tmdb.get<TmdbPage>('/discover/tv', {
-        'air_date.gte': `${year}-01-01`,
-        'air_date.lte': `${year}-12-31`,
-        'vote_average.gte': SERIES.score,
-        'vote_count.gte': SERIES.votes,
-        without_genres: NOT_SERIES,
-        sort_by: 'vote_count.desc',
-        include_adult: false,
-        page,
-      }),
-    ),
+  const found = await discoverUpTo(
+    tmdb,
+    '/discover/tv',
+    {
+      'air_date.gte': `${year}-01-01`,
+      'air_date.lte': `${year}-12-31`,
+      'vote_average.gte': SERIES.score,
+      'vote_count.gte': SERIES.votes,
+      without_genres: NOT_SERIES,
+      sort_by: 'vote_count.desc',
+    },
+    SERIES_LOOKED,
   )
-  const ids = new Set(pages.flatMap((p) => p.results.map((t) => t.id)))
+  const ids = new Set(found.map((t) => t.id))
   const shows = await Promise.all([...ids].map((id) => tmdb.get<TvDetails>(`/tv/${id}`)))
   return shows
     .flatMap((s) => {
@@ -244,7 +255,7 @@ async function bestSeries(tmdb: TmdbReader, year: number): Promise<Suggestion[]>
 
 /** A year's best-scored films (with enough votes): of the most popular, the best scored first */
 async function best(tmdb: TmdbReader, year: number): Promise<Suggestion[]> {
-  const films = await discoverMovies(tmdb, { primary_release_year: year, 'vote_average.gte': BEST.score, 'vote_count.gte': BEST.votes })
+  const films = await discoverMovies(tmdb, { primary_release_year: year, 'vote_average.gte': BEST.score, 'vote_count.gte': BEST.votes }, LONGEST)
   return films.sort(byScore)
 }
 
@@ -276,12 +287,29 @@ export type ListKind = 'people' | 'because' | 'shows' | 'series' | 'best' | 'cin
 export const ALL: ListKind[] = ['people', 'because', 'shows', 'series', 'best', 'cinema', 'upcoming', 'trending']
 /** What Discover shows for now: the best series and films of the last few years */
 export const SHOWN: ListKind[] = ['series', 'best']
-/** The best of this year and the years before it */
-const BEST_YEARS = 4
+/** Discover's years at first: this one and the three before it (older ones are asked for one at a time) */
+const LATEST_YEARS = 4
+/** The oldest year asked for */
+export const FIRST_YEAR = 1900
+
+/** This year and the ones before it that Discover starts with, the latest first */
+export function latestYears(today = new Date()): number[] {
+  return Array.from({ length: LATEST_YEARS }, (_, i) => today.getFullYear() - i)
+}
+
+export interface DiscoverOptions {
+  today?: Date
+  /** The years' best of (the series and best lists): `latestYears` */
+  years?: number[]
+}
 
 /** A user's lists of the `kinds` asked for, in Discover's order; those that are empty or failed left out */
-export async function discover(tmdb: TmdbReader, library: Library, kinds: ListKind[] = SHOWN, today = new Date()): Promise<DiscoverList[]> {
-  const year = today.getFullYear()
+export async function discover(
+  tmdb: TmdbReader,
+  library: Library,
+  kinds: ListKind[] = SHOWN,
+  { today = new Date(), years = latestYears(today) }: DiscoverOptions = {},
+): Promise<DiscoverList[]> {
   const lists: Record<ListKind, () => [string, string, Promise<Suggestion[]>][]> = {
     people: () => [['people', 'New and coming from people you watch', fromPeople(tmdb, library, today)]],
     because: () =>
@@ -289,9 +317,8 @@ export async function discover(tmdb: TmdbReader, library: Library, kinds: ListKi
         .slice(0, BECAUSE)
         .map((w) => [`because:${w.kind}:${w.tmdbId}`, `Because you watched ${w.title}`, because(tmdb, library, w)]),
     shows: () => [['shows', 'Your series: what’s next', nextForShows(tmdb, library, today)]],
-    series: () =>
-      Array.from({ length: BEST_YEARS }, (_, i) => [`series:${year - i}`, `Best series of ${year - i}`, bestSeries(tmdb, year - i)]),
-    best: () => Array.from({ length: BEST_YEARS }, (_, i) => [`best:${year - i}`, `Best films of ${year - i}`, best(tmdb, year - i)]),
+    series: () => years.map((y) => [`series:${y}`, `Best series of ${y}`, bestSeries(tmdb, y)]),
+    best: () => years.map((y) => [`best:${y}`, `Best films of ${y}`, best(tmdb, y)]),
     cinema: () => [['cinema', 'In cinemas', inCinemas(tmdb)]],
     upcoming: () => [['upcoming', 'Coming soon', comingSoon(tmdb, today)]],
     trending: () => [['trending', 'Trending this week', trending(tmdb)]],

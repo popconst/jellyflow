@@ -106,12 +106,13 @@ export class Store {
       }))
   }
 
-  /** Puts a user's lists, worked out for `made`, in place of the ones they had */
+  /** Puts a user's lists, worked out for `made`, in place of those worked out for it before; the rest are kept (other years') */
   keepLists(user: string, made: string, lists: DiscoverList[]): void {
     this.transaction(() => {
-      this.db.prepare('DELETE FROM discover WHERE user = ?').run(user)
+      this.db.prepare('DELETE FROM discover WHERE user = ? AND made = ?').run(user, made)
+      // a list's key is the user's once: should another set have it (the years moved on), it's this one's now
       const insert = this.db.prepare(
-        'INSERT INTO discover (user, key, position, name, items, computed, made) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT OR REPLACE INTO discover (user, key, position, name, items, computed, made) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
       lists.forEach((l, i) => insert.run(user, l.key, i, l.name, JSON.stringify(l.items), l.computed, made))
     })

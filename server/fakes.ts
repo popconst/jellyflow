@@ -112,11 +112,16 @@ export function tmdbAnswers(): Record<string, unknown> {
       next_episode_to_air: { air_date: daysFromNow(40), season_number: 3, episode_number: 1 },
       last_episode_to_air: { air_date: '2025-03-20', season_number: 2, episode_number: 10 },
     },
-    // series on this year or last; how many seasons, and when last on, only in their details
+    // series on this year, last year, or in 2013; how many seasons, and when last on, only in their details
     '/discover/tv': (url: URL) => {
       const year = Number(url.searchParams.get('air_date.gte')?.slice(0, 4))
       const thisYear = new Date().getFullYear()
-      return page(year === thisYear ? [{ id: 1396 }, { id: 42009 }, { id: 95396 }] : year === thisYear - 1 ? [{ id: 42009 }, { id: 1399 }, { id: 92685 }] : [])
+      const on: Record<number, { id: number }[]> = {
+        [thisYear]: [{ id: 1396 }, { id: 42009 }, { id: 95396 }],
+        [thisYear - 1]: [{ id: 42009 }, { id: 1399 }, { id: 92685 }],
+        2013: [{ id: 1396 }],
+      }
+      return page(on[year] ?? [])
     },
     '/tv/1396': { id: 1396, name: 'Breaking Bad', first_air_date: '2008-01-20', last_air_date: '2013-09-29', number_of_seasons: 5, status: 'Ended', vote_average: 8.9, vote_count: 19000 },
     '/tv/42009': {

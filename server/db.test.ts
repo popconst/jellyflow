@@ -53,7 +53,7 @@ test("TMDB's answers: found while fresh enough", () => {
   assert.equal(store.tmdb('/movie/603', 6000), '{"id":603,"new":true}')
 })
 
-test('the lists: in order, per user, replaced whole; only if worked out for what is asked', () => {
+test('the lists: in order, per user, each set replaced whole, the others kept; only if worked out for what is asked', () => {
   const store = new Store(':memory:')
   store.keepLists('u1', 'best', [
     { key: 'people', name: 'People', items: [matrix], computed: 1 },
@@ -76,6 +76,22 @@ test('the lists: in order, per user, replaced whole; only if worked out for what
   assert.deepEqual(
     store.lists('u2', 'best').map((l) => l.key),
     ['trending'],
+  )
+  store.keepLists('u1', 'best:2013', [{ key: 'best:2013', name: 'Best of 2013', items: [], computed: 4 }])
+  store.keepLists('u1', 'best:2013', [{ key: 'best:2013', name: 'Best of 2013', items: [matrix], computed: 5 }])
+  assert.deepEqual(
+    [...store.lists('u1', 'best'), ...store.lists('u1', 'best:2013')].map((l) => [l.key, l.computed]),
+    [
+      ['cinema', 3],
+      ['best:2013', 5],
+    ],
+    'each set replaced on its own',
+  )
+  store.keepLists('u1', 'best', [])
+  assert.deepEqual(
+    store.lists('u1', 'best:2013').map((l) => l.key),
+    ['best:2013'],
+    'the others kept',
   )
 })
 

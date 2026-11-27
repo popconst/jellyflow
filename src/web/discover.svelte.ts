@@ -1,16 +1,21 @@
 // Discover: films and series beyond the library, from jellyflow's own server
 // (/api, server/api.ts), asked as the user logged in to jellyflow. Whether
 // the server has it (a TMDB token); its lists, read when Discover is first
-// opened; and the wishlist, which w adds to and takes from at once, the
-// server told after.
+// opened, the latest years' and then, as they're asked for, older years one
+// at a time; which kind is shown, films or series; and the wishlist, which w
+// adds to and takes from at once, the server told after.
 
 import { untrack } from 'svelte'
-import type { DiscoverList, Suggestion } from '../core/discover.ts'
+import type { DiscoverList, Kind, Suggestion } from '../core/discover.ts'
 import { authorization } from '../core/jellyfin.ts'
-import { app } from './state.svelte.ts'
+import { app, store, stored } from './state.svelte.ts'
 
 /** TMDB's image widths, smallest first */
 const WIDTHS = [92, 154, 185, 342, 500, 780]
+/** Films or series, kept across reloads */
+const KIND = 'jellyflow.discoverKind'
+/** No older year is asked for (the server's FIRST_YEAR) */
+const FIRST_YEAR = 1900
 
 /** A suggestion in a row: by its ref, which is unique in a row */
 export type Pick = Suggestion & { id: string }
@@ -26,6 +31,11 @@ class Discover {
   wishlist = $state.raw<Suggestion[]>([])
   loading = $state(false)
   read = $state(false)
+  /** Films or series: what Discover shows */
+  kind = $state<Kind>(stored<Kind>(KIND) === 'tv' ? 'tv' : 'movie')
+  /** The oldest year the lists are of; the year being asked for now (one at a time) */
+  oldest = $state<number | undefined>()
+  finding = $state<number | undefined>()
 
   /** The refs on the wishlist */
   wished = $derived(new Set(this.wishlist.map((s) => s.ref)))
@@ -61,12 +71,13 @@ class Discover {
     if (!this.on || (!again && (this.loading || this.read))) return
     this.loading = true
     try {
-      const [{ lists }, { items }, { refs }] = await Promise.all([
-        this.call<{ lists: DiscoverList[] }>('discover'),
+      const [{ lists, oldest }, { items }, { refs }] = await Promise.all([
+        this.call<{ lists: DiscoverList[]; oldest: number }>('discover'),
         this.call<{ items: Suggestion[] }>('wishlist'),
         this.call<{ refs: string[] }>('dismissed'),
       ])
       this.lists = lists
+      this.oldest = oldest
       this.wishlist = items
       this.dismissed = new Set(refs)
       this.read = true
@@ -74,6 +85,36 @@ class Discover {
       app.fail(e)
     } finally {
       this.loading = false
+    }
+  }
+
+  setKind(kind: Kind): void {
+    this.kind = kind
+    store(KIND, kind)
+  }
+
+  /**
+   * The year before the oldest one's lists, after the rest, both kinds at
+   * once (so the other has it too): that year and its lists, once they're
+   * in. One year at a time: asked again meanwhile, or with none older,
+   * nothing is asked
+   */
+  async more(): Promise<{ year: number; lists: DiscoverList[] } | undefined> {
+    const year = this.oldest === undefined ? undefined : this.oldest - 1
+    if (!this.read || this.finding !== undefined || year === undefined || year < FIRST_YEAR) return undefined
+    this.finding = year
+    try {
+      const { lists, oldest } = await this.call<{ lists: DiscoverList[]; oldest: number }>(`discover?year=${year}`)
+      // logged out, or read afresh, meanwhile
+      if (this.finding !== year || this.oldest !== year + 1) return undefined
+      this.lists = [...this.lists, ...lists]
+      this.oldest = oldest
+      return { year, lists }
+    } catch (e) {
+      app.fail(e)
+      return undefined
+    } finally {
+      if (this.finding === year) this.finding = undefined
     }
   }
 
@@ -147,6 +188,8 @@ class Discover {
     this.lists = []
     this.wishlist = []
     this.dismissed = new Set()
+    this.oldest = undefined
+    this.finding = undefined
     this.read = false
     this.loading = false
   }
