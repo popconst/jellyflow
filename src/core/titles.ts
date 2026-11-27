@@ -2,9 +2,9 @@
 // fields read from Jellyfin, the facts and status lines, how far one was
 // watched, and the search that finds one by its title, year or genre.
 
-import { compareNames, type Item } from './jellyfin.ts'
-import { fold, words } from './library.ts'
+import { compareNames, type Item } from '../lib/jellyfin/index.ts'
 import type { Movie } from './movies.ts'
+import { fold, words } from './search.ts'
 import type { Show } from './shows.ts'
 
 export type Title = Movie | Show
@@ -107,4 +107,9 @@ export function facts(t: Title): string {
 export function status(t: Title): string {
   if (t.played) return 'watched'
   return t.kind === 'show' && t.unwatched ? `${t.unwatched} to watch` : ''
+}
+
+/** A film's or a series' page on IMDb, from its IMDb id ("tt0133093") */
+export function imdbUrl(id: string | null | undefined): string | undefined {
+  return id && /^tt\d+$/.test(id) ? `https://www.imdb.com/title/${id}/` : undefined
 }

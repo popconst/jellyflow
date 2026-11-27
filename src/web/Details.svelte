@@ -1,4 +1,4 @@
-<!-- The album's details (coverflow's `i` panel), and its d / w / m links. -->
+<!-- The album's details (like the `i` panel of coverflow, the terminal app), and its d / w / m links. -->
 <script lang="ts">
   import { details, duration, links } from '../core/details.ts'
   import type { Album } from '../core/library.ts'

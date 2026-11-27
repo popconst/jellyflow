@@ -1,6 +1,7 @@
 // An album's colours, sampled from its cover: its strongest hues, kept close
 // to how they look on the cover but bright enough to glow on black; greys for
-// a black-and-white cover. For the visualiser's gradient and the seek bar.
+// a black-and-white cover. For the spectrum's gradient, the playing mark's,
+// and the seek bars (the music's, a film's in its poster's colours).
 
 import { app } from './state.svelte.ts'
 
@@ -84,7 +85,7 @@ async function read(url: string): Promise<string[]> {
   return [css([0, 0, Math.min(0.95, l + 0.12)]), css([0, 0, l]), css([0, 0, l - 0.25])]
 }
 
-/** An album's colours, read once; none when it has no cover or the cover can't be read */
+/** An album's colours, read once; none when it has no cover or the cover can't be read (tried again next time it's asked) */
 export function coverColours(albumId: string, tag: string | undefined): Promise<string[]> {
   const client = app.client
   if (!tag || !client) return Promise.resolve([])
@@ -93,6 +94,7 @@ export function coverColours(albumId: string, tag: string | undefined): Promise<
   if (!colours) {
     colours = read(url).catch((e: unknown) => {
       console.warn('jellyflow: could not read the colours of', url, e)
+      cache.delete(url)
       return []
     })
     cache.set(url, colours)

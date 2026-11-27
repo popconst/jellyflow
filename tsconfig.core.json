@@ -1,10 +1,12 @@
 {
-  // The core again, without the DOM: shared by the web app and the terminal
-  // app, so it may only use what Node has too (fetch, WebSocket, URL).
+  // The core and the libs again, without the DOM: what Node has too (fetch,
+  // WebSocket, URL), so they stay usable from Node and the terminal app.
+  // Left out: the Svelte lib's entry point and the Jellyfin lib's browser one.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["src/core"]
+  "include": ["src/core", "src/lib"],
+  "exclude": ["src/lib/coverflow/index.ts", "src/lib/jellyfin/browser.ts"]
 }

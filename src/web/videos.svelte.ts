@@ -6,11 +6,11 @@
 // play one of them.
 
 import { untrack } from 'svelte'
-import type { Item, Preferences } from '../core/jellyfin.ts'
 import { toMovie, type Movie } from '../core/movies.ts'
 import { continuing, inWatch, shelves, watchingOf, type Library, type Shelf, type Tile, type Watching } from '../core/shelves.ts'
 import { episodeCode, episodesFrom, nextEpisode, toShow, type Episode, type Show } from '../core/shows.ts'
 import { resumable, startAt, type Title } from '../core/titles.ts'
+import type { Item, Preferences } from '../lib/jellyfin/index.ts'
 import { app, cached } from './state.svelte.ts'
 import type { Showing } from './watch.svelte.ts'
 
@@ -20,7 +20,7 @@ const HIDDEN = 'continueHidden'
 const BACKDROP_PX = 640
 const BACKDROP_BLUR = 18
 /** What was watched is read again once Jellyfin's news of it has been quiet this long (ms) */
-const QUIET_MS = 1500
+const SETTLE_MS = 1500
 
 function parseHidden(value: string | null | undefined): Record<string, number> {
   try {
@@ -145,7 +145,7 @@ class Videos {
     if (!this.read) return
     for (const id of ids) this.changed.add(id)
     clearTimeout(this.changedTimer)
-    this.changedTimer = setTimeout(() => void this.refreshChanged(), QUIET_MS)
+    this.changedTimer = setTimeout(() => void this.refreshChanged(), SETTLE_MS)
   }
 
   private async refreshChanged(): Promise<void> {

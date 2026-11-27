@@ -6,6 +6,8 @@ module.exports = {
       name: 'jellyflow',
       script: 'server.ts',
       interpreter: 'node',
+      // node:sqlite still says it's experimental
+      node_args: '--disable-warning=ExperimentalWarning',
       cwd: __dirname,
       env: { HOST: '127.0.0.1', PORT: 4173 },
     },

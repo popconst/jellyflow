@@ -7,15 +7,16 @@
 <script lang="ts">
   import { untrack } from 'svelte'
   import { duration, links } from '../core/details.ts'
-  import { folderName, seconds, type Item } from '../core/jellyfin.ts'
-  import { Keys, keyName } from '../core/keys.ts'
-  import { fold, toAlbum, toTrack, type Album } from '../core/library.ts'
+  import { toAlbum, toTrack, type Album } from '../core/library.ts'
+  import { fold } from '../core/search.ts'
+  import { folderName, seconds, type Item } from '../lib/jellyfin/index.ts'
+  import { Keys, keyName, typing } from '../lib/keys/index.ts'
   import Cover from './Cover.svelte'
   import Details from './Details.svelte'
   import Disc from './Disc.svelte'
   import { player } from './player.svelte.ts'
   import Playing from './Playing.svelte'
-  import { app, store, stored, typing } from './state.svelte.ts'
+  import { app, store, stored } from './state.svelte.ts'
   import TrackList from './TrackList.svelte'
 
   /** A row's height in the lists, px: H / M / L and paging count on it */

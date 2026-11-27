@@ -1,7 +1,7 @@
 // Films, as the Watch view lists them: a title (titles.ts) with its length,
 // tagline, and where it was stopped.
 
-import { date, seconds, type Item } from './jellyfin.ts'
+import { date, seconds, type Item } from '../lib/jellyfin/index.ts'
 import { titleBase, type TitleBase } from './titles.ts'
 
 export interface Movie extends TitleBase {

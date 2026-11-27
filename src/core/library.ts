@@ -1,9 +1,11 @@
-// The albums, as coverflow lists them: sorted by year (oldest first, albums
-// without one last), then title, then artist; playlist folders left out; and
-// the search that finds an album by its artist, title, year or a track.
+// The albums, as coverflow (the MPD terminal app) lists them: sorted by year
+// (oldest first, albums without one last), then title, then artist;
+// playlist folders left out; and the search that finds an album by its
+// artist, title, year or a track.
 
+import { folderName, seconds, type Item } from '../lib/jellyfin/index.ts'
 import { quality } from './details.ts'
-import { folderName, seconds, type Item } from './jellyfin.ts'
+import { fold, words } from './search.ts'
 
 export interface Album {
   id: string
@@ -39,7 +41,7 @@ export interface Track {
 }
 
 /** Folders that aren't albums: playlists of loose tracks */
-export function isPlaylist(path: string): boolean {
+function isPlaylist(path: string): boolean {
   return path.split(/[/\\]/).includes('Playlists')
 }
 
@@ -85,7 +87,7 @@ function fileQuality(item: Item): { quality: string | undefined; hiRes: boolean 
 }
 
 /** By year, oldest first, albums without one last; then title (case-insensitive, leading quotes and brackets ignored), then artist */
-export function compareAlbums(a: Album, b: Album): number {
+function compareAlbums(a: Album, b: Album): number {
   const key = (x: Album) => x.title.replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase()
   return (
     Number(a.year === '') - Number(b.year === '') ||
@@ -130,22 +132,6 @@ export interface Found {
   index: number
   /** The track it was found by, if it wasn't by the album itself */
   track: string | undefined
-}
-
-/** Letters that don't come apart into a letter and an accent */
-const PLAIN: Record<string, string> = { ø: 'o', æ: 'ae', œ: 'oe', ß: 'ss', ł: 'l', đ: 'd', ð: 'd', þ: 'th', ı: 'i' }
-
-/** Lowercased, accents off: "Léon" and "leon", "Björk" and "bjork", "Știrile" and "stirile" all match */
-export function fold(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .replace(/[øæœßłđðþı]/g, (c) => PLAIN[c] ?? c)
-}
-
-export function words(query: string): string[] {
-  return fold(query).split(/\s+/).filter(Boolean)
 }
 
 /**

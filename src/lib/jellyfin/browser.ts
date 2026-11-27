@@ -1,8 +1,10 @@
 // What this browser plays, by Jellyfin's codec names, for Jellyfin to send
 // it untouched wherever it can: music files as they are, films (and music
-// it has to convert) as HLS with fragmented MP4.
+// it has to convert) as HLS with fragmented MP4. The browser's half of the
+// lib (it asks the DOM): imported from here, never from index.ts, which
+// Node uses too.
 
-import type { Caps } from '../core/playback.ts'
+import type { Caps } from './profiles.ts'
 
 /** Safari (macOS, iOS) plays HLS itself, and better than a script can there: lock screen, AirPlay, Dolby */
 export function nativeHls(): boolean {
@@ -51,4 +53,3 @@ export function browserCaps(): Caps {
     files: Object.keys(MUSIC_FILES).filter((codec) => audio.canPlayType(MUSIC_FILES[codec] ?? '') !== ''),
   }
 }
-

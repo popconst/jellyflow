@@ -1,7 +1,8 @@
 {
-  // Everything: the web app (DOM), the core, the server and the configs.
-  // tsconfig.core.json checks the core again without the DOM, so it stays
-  // usable from the terminal app.
+  // Everything: the web app (DOM), the libs, the core, the server and the
+  // configs. tsconfig.core.json checks the core and the libs again without
+  // the DOM, so they stay usable from Node and the terminal app;
+  // tsconfig.server.json the server.
   "compilerOptions": {
     "target": "ES2023",
     "module": "ESNext",
@@ -23,5 +24,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src", "server.ts", "vite.config.ts"]
+  "include": ["src", "server.ts", "server", "vite.config.ts"]
 }

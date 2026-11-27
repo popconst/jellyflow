@@ -1,13 +1,14 @@
 // An album at a glance, from Jellyfin's album and its tracks: artists, years,
 // label, genres, length, audio quality, credits, MusicBrainz id, folder; and
-// the Discogs / Wikipedia / MusicBrainz links (coverflow's `i` panel). And a
-// track's format as it comes to the browser, for the player bar.
+// the Discogs / Wikipedia / MusicBrainz links (the `i` panel of coverflow,
+// the terminal app). And a track's format as it comes to the browser, for
+// the player bar.
 
-import { seconds, type Item, type MediaSource, type MediaStream } from './jellyfin.ts'
+import { conversion, seconds, type Item, type MediaSource, type MediaStream } from '../lib/jellyfin/index.ts'
 import type { Album } from './library.ts'
-import { conversion } from './playback.ts'
 
-export interface Quality {
+/** A kind of file on an album, and how many of its tracks are */
+export interface AudioQuality {
   /** e.g. "FLAC · 24-bit / 96 kHz · stereo" */
   text: string
   /** More than CD quality: lossless above 16-bit or 48 kHz, or DSD */
@@ -27,7 +28,7 @@ export interface Details {
   discs: number
   seconds: number
   /** One line per kind of file, most tracks first */
-  quality: Quality[]
+  quality: AudioQuality[]
   composers: string[]
   /** Everyone else credited: "Name (role)" */
   credits: string[]
@@ -125,7 +126,7 @@ function format(source: MediaSource | undefined, to?: string): { text: string; h
 export function details(album: Album, tracks: Item[]): Details {
   const artists = unique(tracks.flatMap((t) => t.Artists ?? []))
   const differ = artists.some((a) => a !== album.artist)
-  const qualities = new Map<string, Quality>()
+  const qualities = new Map<string, AudioQuality>()
   for (const track of tracks) {
     const q = quality(track)
     const seen = qualities.get(q.text)

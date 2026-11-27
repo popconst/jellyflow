@@ -67,7 +67,16 @@
     </div>
     <div class="time">{duration(player.time)}</div>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="bar" role="slider" tabindex="-1" aria-valuenow={player.time} onclick={seek}>
+    <div
+      class="bar"
+      role="slider"
+      tabindex="-1"
+      aria-label="Seek"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(player.duration)}
+      aria-valuenow={Math.round(player.time)}
+      onclick={seek}
+    >
       <div class="done" style:width="{done}%" style:background={fill}></div>
       <div class="knob" style:left="{done}%"></div>
     </div>

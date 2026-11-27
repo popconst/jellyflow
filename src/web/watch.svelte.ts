@@ -1,8 +1,7 @@
 // Watching: what's open in the player (a film or an episode) and from where,
 // and the audio and subtitle languages chosen last (for the next one).
 
-import type { Item } from '../core/jellyfin.ts'
-import type { Preference } from '../core/playback.ts'
+import type { Item, Preference } from '../lib/jellyfin/index.ts'
 import { player } from './player.svelte.ts'
 import { store, stored } from './state.svelte.ts'
 

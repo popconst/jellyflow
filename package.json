@@ -1,16 +1,34 @@
 {
   "name": "jellyflow",
   "version": "0.1.0",
-  "description": "Flip through a Jellyfin music library by album cover (Cover Flow) or by folder, and films by poster, with vim keys. In the browser now; in the terminal next.",
+  "description": "A keyboard-first Jellyfin web client: films and series in Netflix-style rows of Cover Flow, music by album cover or by folder, Discover from TMDB with a wishlist, and vim keys throughout.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/popconst/jellyflow.git"
+  },
+  "homepage": "https://github.com/popconst/jellyflow#readme",
+  "bugs": "https://github.com/popconst/jellyflow/issues",
+  "keywords": [
+    "jellyfin",
+    "jellyfin-client",
+    "cover-flow",
+    "svelte",
+    "vim",
+    "keyboard",
+    "media-player",
+    "music-player",
+    "tmdb",
+    "hls"
+  ],
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start": "node server.ts",
-    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p tsconfig.core.json",
-    "test": "node --test \"src/core/*.test.ts\""
+    "start": "node --disable-warning=ExperimentalWarning server.ts",
+    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p tsconfig.core.json && tsc -p tsconfig.server.json",
+    "test": "node --disable-warning=ExperimentalWarning --test \"src/lib/*/*.test.ts\" \"src/core/*.test.ts\" \"server/*.test.ts\""
   },
   "engines": {
     "node": ">=22.18"

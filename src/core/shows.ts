@@ -2,7 +2,7 @@
 // a series up: the episode stopped partway, if it was the last one watched,
 // else the one after the last watched to the end.
 
-import { date, seconds, type Item } from './jellyfin.ts'
+import { date, seconds, type Item } from '../lib/jellyfin/index.ts'
 import { titleBase, type TitleBase } from './titles.ts'
 
 export interface Show extends TitleBase {
